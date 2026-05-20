@@ -95,15 +95,21 @@ export const parseExcelFile = async (
         }
 
         const aggregatedByDate: Record<string, ProductionData> = {};
-        const warnings: string[] = [];
+        const warningSet = new Set<string>();
 
+        let emptyConsecutiveCount = 0;
         for (let i = headerRowIndex + 1; i < mainRawData.length; i++) {
             const row = mainRawData[i];
-            if (!row || row.length === 0) continue;
+            if (!row || row.length === 0 || !row[dateIdx]) {
+                emptyConsecutiveCount++;
+                if (emptyConsecutiveCount > 100) {
+                    break; // stop parsing after 100 consecutive empty rows
+                }
+                continue;
+            }
+            emptyConsecutiveCount = 0; // reset
 
             const dateVal = row[dateIdx];
-            if (!dateVal) continue;
-
             const formattedDate = parseExcelDate(dateVal);
 
             let actualProduction = cleanNumber(row[prodIdx]);
@@ -120,9 +126,7 @@ export const parseExcelFile = async (
             // Inconsistency detection
             if (conformQty > actualProduction) {
                 const warnMsg = `Attention : Conforme Qty (${conformQty}) supérieur à Total Production (${actualProduction}) pour ${expectedDepartment} le ${formattedDate}.`;
-                if (!warnings.includes(warnMsg)) {
-                    warnings.push(warnMsg);
-                }
+                warningSet.add(warnMsg);
                 // Auto-correct
                 actualProduction = conformQty + scrapQty;
             }
@@ -214,12 +218,19 @@ export const parseExcelFile = async (
                         if (sDateIdx !== -1 && sProdIdx !== -1) {
                             const subAgg: Record<string, SubComponentData> = {};
 
+                            let emptyConsecutiveSub = 0;
                             for (let i = subHeaderIdx + 1; i < rawSubData.length; i++) {
                                 const r = rawSubData[i];
-                                if (!r || r.length === 0) continue;
-                                const dateVal = r[sDateIdx];
-                                if (!dateVal) continue;
+                                if (!r || r.length === 0 || !r[sDateIdx]) {
+                                    emptyConsecutiveSub++;
+                                    if (emptyConsecutiveSub > 100) {
+                                        break; // stop parsing after 100 consecutive empty rows
+                                    }
+                                    continue;
+                                }
+                                emptyConsecutiveSub = 0; // reset
 
+                                const dateVal = r[sDateIdx];
                                 const formattedDate = parseExcelDate(dateVal);
 
                                 let actualProduction = cleanNumber(r[sProdIdx]);
@@ -279,7 +290,7 @@ export const parseExcelFile = async (
             });
         }
 
-        resolve({ data: parsedData, warnings, subComponentsData });
+        resolve({ data: parsedData, warnings: Array.from(warningSet), subComponentsData });
       } catch (err) {
         resolve({ error: `Erreur inattendue.` });
       }
