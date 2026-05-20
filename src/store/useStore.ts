@@ -36,6 +36,7 @@ interface AppState {
   warnings: string[];
   addProductionData: (data: ProductionData[], warnings?: string[]) => void;
   addSubComponentsData: (data: SubComponentData[]) => void;
+  removeWarning: (warning: string) => void;
   clearData: () => void;
 }
 
@@ -84,6 +85,9 @@ export const useStore = create<AppState>()(
         });
         return { subComponentsData: newData };
       }),
+      removeWarning: (warning) => set((state) => ({
+        warnings: state.warnings.filter(w => w !== warning),
+      })),
       clearData: () => set({ productionData: [], subComponentsData: [], warnings: [] }),
     }),
     {

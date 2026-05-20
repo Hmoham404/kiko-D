@@ -23,6 +23,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
   const [targets, setTargets] = useState<{ [key: string]: number }>(
     Object.fromEntries(DEPARTMENTS.map(d => [d.name, d.defaultTarget]))
   );
+  const [subTargets, setSubTargets] = useState<{ base: number; cover: number; insert: number }>({
+    base: 4167,
+    cover: 4167,
+    insert: 4167
+  });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [success, setSuccess] = useState(false);
@@ -41,7 +46,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
 
   const handleTargetChange = (dept: string, val: string) => {
     const num = Number(val);
-    setTargets(prev => ({ ...prev, [dept]: isNaN(num) ? 0 : num }));
+    const validNum = isNaN(num) ? 0 : num;
+    setTargets(prev => ({ ...prev, [dept]: validNum }));
+    if (dept === 'Injection') {
+      const split = Math.round(validNum / 3);
+      setSubTargets({
+        base: split,
+        cover: split,
+        insert: split
+      });
+    }
   };
 
   const handleImport = async () => {
@@ -72,7 +86,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
          allWarnings.push(`Le fichier "${file.name}" a été importé pour "${deptName}", mais son nom ne contient pas "${deptKeyWord}".`);
       }
 
-      const result = await parseExcelFile(file, deptName, target);
+      const result = await parseExcelFile(
+        file, 
+        deptName, 
+        target, 
+        deptName === 'Injection' ? subTargets : undefined
+      );
       if (result.error) {
         newErrors.push(`Erreur pour ${deptName}: ${result.error}`);
       } else {
@@ -132,35 +151,75 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
 
           <div className="space-y-4">
             {DEPARTMENTS.map((dept) => (
-              <div key={dept.name} className="flex flex-col sm:flex-row items-center p-3 border rounded-lg border-gray-200 hover:border-red-300 transition-colors bg-gray-50 gap-4">
-                <div className="flex-1 font-medium text-gray-700 flex items-center min-w-[150px]">
-                  <FileSpreadsheet className="w-4 h-4 mr-2 text-gray-400" />
-                  {dept.name}
+              <div key={dept.name} className="flex flex-col p-3 border rounded-lg border-gray-200 hover:border-red-300 transition-colors bg-gray-50 gap-3">
+                <div className="flex flex-col sm:flex-row items-center w-full gap-4">
+                  <div className="flex-1 font-medium text-gray-700 flex items-center min-w-[150px]">
+                    <FileSpreadsheet className="w-4 h-4 mr-2 text-gray-400" />
+                    {dept.name}
+                  </div>
+                  <div className="flex flex-col items-start min-w-[120px]">
+                    <label className="text-xs text-gray-500 mb-1">Target Journalier</label>
+                    <input
+                      type="number"
+                      value={targets[dept.name]}
+                      onChange={(e) => handleTargetChange(dept.name, e.target.value)}
+                      className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500 border p-1.5"
+                    />
+                  </div>
+                  <div className="flex-2 w-full">
+                    <input
+                      type="file"
+                      accept=".xlsx, .xls"
+                      onChange={(e) => handleFileChange(dept.name, e)}
+                      className="block w-full text-sm text-gray-500
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-full file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-red-50 file:text-red-700
+                        hover:file:bg-red-100 cursor-pointer"
+                    />
+                  </div>
+                  {files[dept.name] && (
+                    <CheckCircle className="w-5 h-5 text-green-500 ml-2 hidden sm:block" />
+                  )}
                 </div>
-                <div className="flex flex-col items-start min-w-[120px]">
-                  <label className="text-xs text-gray-500 mb-1">Target Journalier</label>
-                  <input
-                    type="number"
-                    value={targets[dept.name]}
-                    onChange={(e) => handleTargetChange(dept.name, e.target.value)}
-                    className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500 border p-1.5"
-                  />
-                </div>
-                <div className="flex-2 w-full">
-                  <input
-                    type="file"
-                    accept=".xlsx, .xls"
-                    onChange={(e) => handleFileChange(dept.name, e)}
-                    className="block w-full text-sm text-gray-500
-                      file:mr-4 file:py-2 file:px-4
-                      file:rounded-full file:border-0
-                      file:text-sm file:font-semibold
-                      file:bg-red-50 file:text-red-700
-                      hover:file:bg-red-100 cursor-pointer"
-                  />
-                </div>
-                {files[dept.name] && (
-                  <CheckCircle className="w-5 h-5 text-green-500 ml-2 hidden sm:block" />
+                
+                {/* Specific Targets for Injection components */}
+                {dept.name === 'Injection' && (
+                  <div className="w-full mt-1 p-3 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col gap-2">
+                    <span className="text-xs font-semibold text-gray-700">
+                      Objectifs Spécifiques par Composant (Base, Cover, Insert)
+                    </span>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-0.5">Target Base</label>
+                        <input
+                          type="number"
+                          value={subTargets.base}
+                          onChange={(e) => setSubTargets(p => ({ ...p, base: Number(e.target.value) || 0 }))}
+                          className="w-full text-xs border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500 border p-1.5"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-0.5">Target Cover</label>
+                        <input
+                          type="number"
+                          value={subTargets.cover}
+                          onChange={(e) => setSubTargets(p => ({ ...p, cover: Number(e.target.value) || 0 }))}
+                          className="w-full text-xs border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500 border p-1.5"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-0.5">Target Insert</label>
+                        <input
+                          type="number"
+                          value={subTargets.insert}
+                          onChange={(e) => setSubTargets(p => ({ ...p, insert: Number(e.target.value) || 0 }))}
+                          className="w-full text-xs border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500 border p-1.5"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             ))}

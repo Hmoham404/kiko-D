@@ -51,17 +51,17 @@ export const SubComponentsTable: React.FC<SubComponentsTableProps> = ({ data }) 
       <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
         <table className="w-full text-xs text-left border-collapse">
           <thead className="sticky top-0 z-20">
-            <tr className="bg-red-600 text-white font-bold uppercase text-center">
-              <th rowSpan={2} className="px-3 py-4 border-r border-red-700 sticky left-0 bg-red-600 z-30 min-w-[120px]">
+            <tr className="bg-slate-700 text-white font-bold uppercase text-center">
+              <th rowSpan={2} className="px-3 py-4 border-r border-slate-800 sticky left-0 bg-slate-700 z-30 min-w-[120px]">
                 Jour / Date
               </th>
               {COMPONENTS.map(comp => (
-                <th colSpan={7} key={comp} className="px-2 py-2 border-r border-red-700 text-center">
+                <th colSpan={7} key={comp} className="px-2 py-2 border-r border-slate-600 text-center">
                   Injection {comp}
                 </th>
               ))}
             </tr>
-            <tr className="bg-red-50 text-red-900 font-semibold uppercase text-center border-b border-gray-300">
+            <tr className="bg-slate-50 text-slate-700 font-semibold uppercase text-center border-b border-gray-300">
               {COMPONENTS.flatMap(comp => [
                 <th key={`${comp}-tgt`} className="px-2 py-2 border-r border-gray-200 text-right min-w-[70px]">Target</th>,
                 <th key={`${comp}-prd`} className="px-2 py-2 border-r border-gray-200 text-right min-w-[80px]">Total Prod</th>,
@@ -69,7 +69,7 @@ export const SubComponentsTable: React.FC<SubComponentsTableProps> = ({ data }) 
                 <th key={`${comp}-prg`} className="px-2 py-2 border-r border-gray-200 text-right min-w-[65px]">% progress</th>,
                 <th key={`${comp}-gap`} className="px-2 py-2 border-r border-gray-200 text-right min-w-[70px]">Gap</th>,
                 <th key={`${comp}-scp`} className="px-2 py-2 border-r border-gray-200 text-right min-w-[60px] text-red-600">Scrap</th>,
-                <th key={`${comp}-scr`} className="px-2 py-2 border-r border-red-700 text-right min-w-[60px] text-red-600">%scrap</th>
+                <th key={`${comp}-scr`} className="px-2 py-2 border-r border-slate-300 text-right min-w-[60px] text-red-600">%scrap</th>
               ])}
             </tr>
           </thead>
@@ -97,7 +97,7 @@ export const SubComponentsTable: React.FC<SubComponentsTableProps> = ({ data }) 
                         <td key={`${comp}-${date}-prg`} className="px-2 py-3 border-r border-gray-150 text-right text-gray-300">-</td>,
                         <td key={`${comp}-${date}-gap`} className="px-2 py-3 border-r border-gray-150 text-right text-gray-300">-</td>,
                         <td key={`${comp}-${date}-scp`} className="px-2 py-3 border-r border-gray-150 text-right text-gray-300">-</td>,
-                        <td key={`${comp}-${date}-scr`} className="px-2 py-3 border-r border-red-200 text-right text-gray-300">-</td>
+                        <td key={`${comp}-${date}-scr`} className="px-2 py-3 border-r border-slate-200 text-right text-gray-300">-</td>
                       ];
                     }
 
@@ -111,7 +111,7 @@ export const SubComponentsTable: React.FC<SubComponentsTableProps> = ({ data }) 
                       <td key={`${comp}-${date}-prg`} className={`px-2 py-3 border-r border-gray-150 text-right ${progressColor}`}>{formatPct(item.progress)}</td>,
                       <td key={`${comp}-${date}-gap`} className={`px-2 py-3 border-r border-gray-150 text-right font-medium ${cumGap > 0 ? 'text-red-500' : 'text-green-600'}`}>{cumGap > 0 ? '+' : ''}{formatNum(cumGap)}</td>,
                       <td key={`${comp}-${date}-scp`} className="px-2 py-3 border-r border-gray-150 text-right text-red-600">{formatNum(item.scrapQty)}</td>,
-                      <td key={`${comp}-${date}-scr`} className={`px-2 py-3 border-r border-red-200 text-right ${scrapColor}`}>{formatPct(item.scrapRate)}</td>
+                      <td key={`${comp}-${date}-scr`} className={`px-2 py-3 border-r border-slate-200 text-right ${scrapColor}`}>{formatPct(item.scrapRate)}</td>
                     ];
                   })}
                 </tr>

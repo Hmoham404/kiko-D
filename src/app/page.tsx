@@ -17,6 +17,7 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<TabType>('daily');
   const { productionData, subComponentsData, warnings, clearData } = useStore();
 
+  const [showWarnings, setShowWarnings] = useState(true);
   // Calculate Global KPIs
   const kpis = useMemo(() => {
     if (!productionData || productionData.length === 0) return null;
@@ -112,13 +113,13 @@ export default function DashboardPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-3 bg-gray-50 p-2 rounded-lg border border-gray-100 shadow-sm">
-              <img src="/kiko-logo-.webp" alt="KIKO Milano" className="h-9 object-contain" />
+
               <div className="h-6 w-px bg-gray-300"></div>
               <img src="/logo myc.jpg" alt="MYC Beauty" className="h-8 object-contain rounded" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-800 leading-tight">Production Performance</h1>
-              <p className="text-xs text-gray-500 font-medium tracking-wide uppercase">Audit Dashboard</p>
+              <h1 className="text-xl font-bold text-gray-800 leading-tight">MYC Performance</h1>
+              <p className="text-xs text-gray-500 font-medium tracking-wide uppercase">MYC Dashboard</p>
             </div>
           </div>
           <div className="flex gap-3">
@@ -164,8 +165,9 @@ export default function DashboardPage() {
         ) : (
           <div className="space-y-8 animate-in fade-in duration-500">
             {/* Warning Banner */}
-            {warnings.length > 0 && (
-              <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-md shadow-sm animate-in slide-in-from-top duration-300">
+          {showWarnings && warnings.length > 0 && (
+            <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-md shadow-sm animate-in slide-in-from-top duration-300">
+              <div className="flex items-start justify-between">
                 <div className="flex items-start">
                   <div className="flex-shrink-0">
                     <AlertTriangle className="h-5 w-5 text-amber-600" aria-hidden="true" />
@@ -183,8 +185,15 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
+                <button
+                  onClick={() => setShowWarnings(false)}
+                  className="ml-2 text-amber-600 hover:text-amber-800"
+                >
+                  Hide
+                </button>
               </div>
-            )}
+            </div>
+          )}
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

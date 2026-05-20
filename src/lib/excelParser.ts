@@ -45,7 +45,8 @@ const cleanNumber = (val: any): number => {
 export const parseExcelFile = async (
   file: File, 
   expectedDepartment: string, 
-  manualTarget: number
+  manualTarget: number,
+  subTargets?: { base: number; cover: number; insert: number }
 ): Promise<{ 
   data?: ProductionData[], 
   error?: string, 
@@ -236,9 +237,18 @@ export const parseExcelFile = async (
                                 let actualProduction = cleanNumber(r[sProdIdx]);
                                 const conformQty = cleanNumber(r[sConformIdx]);
                                 const scrapQty = cleanNumber(r[sScrapIdx]);
+                                
+                                // Determine the sub-target
+                                let defaultSubTarget = Math.round(manualTarget / 3);
+                                if (subTargets) {
+                                  if (sheetName.toLowerCase() === 'base') defaultSubTarget = subTargets.base;
+                                  else if (sheetName.toLowerCase() === 'cover') defaultSubTarget = subTargets.cover;
+                                  else if (sheetName.toLowerCase() === 'insert') defaultSubTarget = subTargets.insert;
+                                }
+                                
                                 const rowSubTarget = sTargetIdx !== -1 && r[sTargetIdx] !== undefined && r[sTargetIdx] !== null && String(r[sTargetIdx]).trim() !== ''
                                     ? cleanNumber(r[sTargetIdx])
-                                    : Math.round(manualTarget / 3);
+                                    : defaultSubTarget;
 
                                 if (actualProduction === 0 && conformQty === 0 && scrapQty === 0) {
                                     continue;
