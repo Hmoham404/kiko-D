@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# KIKO Milano & MYC Beauty - Production Performance Audit Dashboard
 
-## Getting Started
+This is a premium, high-performance Next.js production auditing dashboard built for **MYC Beauty** and **KIKO Milano**.
 
-First, run the development server:
+## 🚀 Key Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+* **Subtle Industrial Layout Integration:** Visuals styled around active production views with glassmorphic cards and headers.
+* **Excel Data Parser:** Advanced bilingual (French/English) parser to import, validate, and clean Excel sheets for daily production files.
+* **Automated Target Syncing:** Dynamically extracts daily target values directly from Excel sheets or falls back to standard department defaults.
+* **Interactive Tables & Tabs:**
+  * **Daily Tracking Sheet:** Direct replica of original Excel spreadsheet views, with automatic 1-day date shift corrections.
+  * **Synthèse par Département:** Includes detailed breakdown of Injection (`Injection (Base)`, `Injection (Cover)`, `Injection (Insert)`).
+  * **Détail Injection:** Sub-components performance breakdown.
+* **Performance Analytics:** Rich charts representing Target vs Actual, Progress Trends, Scrap per Department, and Production Contribution.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🛠️ Tech Stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+* **Framework:** Next.js (App Router, TailwindCSS/PostCSS)
+* **Icons:** Lucide React
+* **Charts:** Recharts
+* **State Management:** Zustand
+* **Parsing:** SheetJS (xlsx)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📦 Getting Started
 
-## Learn More
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+2. Run the development server:
+   ```bash
+   npm run dev
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. Build for production:
+   ```bash
+   npm run build
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+4. Deploy to Vercel in one click.
