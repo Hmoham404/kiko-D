@@ -69,7 +69,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
       
       const deptKeyWord = deptName.split(' ')[0].toLowerCase();
       if (!file.name.toLowerCase().includes(deptKeyWord)) {
-         newErrors.push(`Attention : Le fichier "${file.name}" ne semble pas correspondre au département "${deptName}". Vérifiez que vous avez sélectionné le bon fichier.`);
+         allWarnings.push(`Le fichier "${file.name}" a été importé pour "${deptName}", mais son nom ne contient pas "${deptKeyWord}".`);
       }
 
       const result = await parseExcelFile(file, deptName, target);

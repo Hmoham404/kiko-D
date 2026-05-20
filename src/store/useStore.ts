@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 export interface ProductionData {
   department: string;
@@ -38,48 +39,56 @@ interface AppState {
   clearData: () => void;
 }
 
-export const useStore = create<AppState>((set) => ({
-  productionData: [],
-  subComponentsData: [],
-  warnings: [],
-  addProductionData: (data, newWarnings) => set((state) => {
-    const newData = [...state.productionData];
-    data.forEach(newItem => {
-      const existingIndex = newData.findIndex(
-        d => d.department === newItem.department && d.date === newItem.date
-      );
-      if (existingIndex >= 0) {
-        newData[existingIndex] = newItem;
-      } else {
-        newData.push(newItem);
-      }
-    });
-    
-    // Add unique warnings
-    const combinedWarnings = [...state.warnings];
-    if (newWarnings) {
-      newWarnings.forEach(w => {
-        if (!combinedWarnings.includes(w)) {
-          combinedWarnings.push(w);
+export const useStore = create<AppState>()(
+  persist(
+    (set) => ({
+      productionData: [],
+      subComponentsData: [],
+      warnings: [],
+      addProductionData: (data, newWarnings) => set((state) => {
+        const newData = [...state.productionData];
+        data.forEach(newItem => {
+          const existingIndex = newData.findIndex(
+            d => d.department === newItem.department && d.date === newItem.date
+          );
+          if (existingIndex >= 0) {
+            newData[existingIndex] = newItem;
+          } else {
+            newData.push(newItem);
+          }
+        });
+        
+        // Add unique warnings
+        const combinedWarnings = [...state.warnings];
+        if (newWarnings) {
+          newWarnings.forEach(w => {
+            if (!combinedWarnings.includes(w)) {
+              combinedWarnings.push(w);
+            }
+          });
         }
-      });
-    }
 
-    return { productionData: newData, warnings: combinedWarnings };
-  }),
-  addSubComponentsData: (data) => set((state) => {
-    const newData = [...state.subComponentsData];
-    data.forEach(newItem => {
-      const existingIndex = newData.findIndex(
-        d => d.component === newItem.component && d.date === newItem.date
-      );
-      if (existingIndex >= 0) {
-        newData[existingIndex] = newItem;
-      } else {
-        newData.push(newItem);
-      }
-    });
-    return { subComponentsData: newData };
-  }),
-  clearData: () => set({ productionData: [], subComponentsData: [], warnings: [] }),
-}));
+        return { productionData: newData, warnings: combinedWarnings };
+      }),
+      addSubComponentsData: (data) => set((state) => {
+        const newData = [...state.subComponentsData];
+        data.forEach(newItem => {
+          const existingIndex = newData.findIndex(
+            d => d.component === newItem.component && d.date === newItem.date
+          );
+          if (existingIndex >= 0) {
+            newData[existingIndex] = newItem;
+          } else {
+            newData.push(newItem);
+          }
+        });
+        return { subComponentsData: newData };
+      }),
+      clearData: () => set({ productionData: [], subComponentsData: [], warnings: [] }),
+    }),
+    {
+      name: 'kiko-dashboard-storage',
+      storage: createJSONStorage(() => localStorage),
+    }
+  )
+);

@@ -76,8 +76,27 @@ export default function DashboardPage() {
     };
   }, [productionData]);
 
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const formatNumber = (num: number) => new Intl.NumberFormat('fr-FR').format(num);
   const formatPercent = (num: number) => `${(num * 100).toFixed(2)}%`;
+
+  if (!mounted) {
+    return (
+      <div 
+        className="min-h-screen bg-cover bg-center bg-fixed relative"
+        style={{ backgroundImage: 'url("/BACK VIEW (1).png")' }}
+      >
+        <div className="absolute inset-0 bg-[#f8f9fa]/90 backdrop-blur-[1px] z-0"></div>
+        <div className="relative z-10 flex flex-col min-h-screen items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-red-600"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div 

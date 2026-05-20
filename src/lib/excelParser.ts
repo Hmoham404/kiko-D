@@ -296,5 +296,6 @@ export const parseExcelFile = async (
       }
     };
     reader.onerror = () => resolve({ error: 'Erreur de lecture' });
+    reader.readAsBinaryString(file);
   });
 };
