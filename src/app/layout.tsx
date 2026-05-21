@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "KIKO Production Performance Dashboard",
-  description: "Dashboard web professionnel pour le suivi de performance production KIKO.",
+  title: "MYC Production Performance Dashboard",
+  description: "Dashboard web professionnel pour le suivi de performance production MYC.",
 };
 
 export default function RootLayout({

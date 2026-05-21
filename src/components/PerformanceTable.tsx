@@ -9,8 +9,14 @@ interface PerformanceTableProps {
 export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, subComponentsData }) => {
   if (!data || data.length === 0) {
     return (
-      <div className="bg-white border rounded-lg p-8 text-center text-gray-500 shadow-sm border-gray-100">
-        Aucune donnée disponible pour la période sélectionnée.
+      <div className="bg-white/80 backdrop-blur-md border border-slate-100 rounded-2xl p-12 text-center text-slate-500 shadow-xl max-w-lg mx-auto">
+        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H3a2 2 0 002-2V5a2 2 0 00-2-2h9l2 2h6a2 2 0 012 2v12a2 2 0 01-2 2z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-bold text-slate-800 mb-1">Aucune donnée disponible</h3>
+        <p className="text-sm text-slate-400">Veuillez importer des données de production.</p>
       </div>
     );
   }
@@ -97,9 +103,10 @@ export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, subCom
   ];
 
   let tableData = Object.values(aggregatedData).map((dept: any) => {
-    const progress = dept.target > 0 ? dept.actualProduction / dept.target : 0;
+    // Corrected to Conform Qty / Target for consistency
+    const progress = dept.target > 0 ? dept.conformQty / dept.target : 0;
     const scrapRate = dept.actualProduction > 0 ? dept.scrapQty / dept.actualProduction : 0;
-    const gap = dept.target - dept.actualProduction;
+    const gap = dept.target - dept.conformQty; // Target vs Conform Qty gap as requested
     
     let status = 'red';
     if (scrapRate > 0.05) status = 'critical';
@@ -121,9 +128,11 @@ export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, subCom
   const globalActual = tableData.reduce((sum, d) => sum + d.actualProduction, 0);
   const globalConform = tableData.reduce((sum, d) => sum + d.conformQty, 0);
   const globalScrap = tableData.reduce((sum, d) => sum + d.scrapQty, 0);
-  const globalProgress = globalTarget > 0 ? globalActual / globalTarget : 0;
+  
+  // Corrected to Conform Qty / Target globally
+  const globalProgress = globalTarget > 0 ? globalConform / globalTarget : 0;
   const globalScrapRate = globalActual > 0 ? globalScrap / globalActual : 0;
-  const globalGap = globalTarget - globalActual;
+  const globalGap = globalTarget - globalConform;
 
   let globalStatus = 'red';
   if (globalScrapRate > 0.05) globalStatus = 'critical';
@@ -145,74 +154,156 @@ export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, subCom
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'green':
-        return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Conforme</span>;
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5 animate-pulse"></span>
+            Conforme
+          </span>
+        );
       case 'orange':
-        return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">Moyen</span>;
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 text-xs font-bold rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+            <span className="w-1.5 h-1.5 bg-amber-500 rounded-full mr-1.5 animate-pulse"></span>
+            Moyen
+          </span>
+        );
       case 'critical':
-        return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-600 text-white animate-pulse">Critique</span>;
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 text-xs font-bold rounded-full bg-red-600 text-white animate-pulse shadow-sm shadow-red-300">
+            <span className="w-1.5 h-1.5 bg-white rounded-full mr-1.5 animate-ping"></span>
+            Critique
+          </span>
+        );
       default:
-        return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">Alerte</span>;
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 text-xs font-bold rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full mr-1.5 animate-pulse"></span>
+            Alerte
+          </span>
+        );
     }
   };
 
   const formatNumber = (num: number) => new Intl.NumberFormat('fr-FR').format(num);
-  const formatPercent = (num: number) => `${(num * 100).toFixed(2)}%`;
+  const formatPercent = (num: number) => `${(num * 100).toFixed(1)}%`;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white/90 backdrop-blur-lg rounded-2xl shadow-xl border border-slate-200/80 overflow-hidden transition-all duration-300 hover:shadow-2xl">
+      {/* Premium Header */}
+      <div className="p-5 bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-850 text-white">
+        <div className="flex items-center space-x-3">
+          <div className="w-3 h-7 bg-red-500 rounded-full animate-pulse"></div>
+          <div>
+            <span className="text-sm font-extrabold tracking-widest uppercase bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+              Synthèse Performance par Département
+            </span>
+            <p className="text-[10px] text-slate-400 font-semibold tracking-wide uppercase mt-0.5">Vue globale consolidée</p>
+          </div>
+        </div>
+      </div>
+
       <div className="overflow-x-auto">
-        <table className="w-full text-sm text-left text-gray-500">
-          <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th scope="col" className="px-6 py-3 font-bold">Department</th>
-              <th scope="col" className="px-6 py-3 font-bold text-right">Target</th>
-              <th scope="col" className="px-6 py-3 font-bold text-right">Actual Prod.</th>
-              <th scope="col" className="px-6 py-3 font-bold text-right">Conform Qty</th>
-              <th scope="col" className="px-6 py-3 font-bold text-right">Gap</th>
-              <th scope="col" className="px-6 py-3 font-bold text-right">Progress %</th>
-              <th scope="col" className="px-6 py-3 font-bold text-right">Scrap Qty</th>
-              <th scope="col" className="px-6 py-3 font-bold text-right">Scrap %</th>
-              <th scope="col" className="px-6 py-3 font-bold text-center">Status</th>
+        <table className="w-full text-xs text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-900 text-white font-bold uppercase text-center border-b border-slate-800">
+              <th className="px-6 py-4 text-left font-black tracking-wider text-[10px] text-slate-300">DEPARTMENT</th>
+              <th className="px-6 py-4 text-right font-black tracking-wider text-[10px] text-slate-300">TARGET</th>
+              <th className="px-6 py-4 text-right font-black tracking-wider text-[10px] text-slate-300">ACTUAL PROD.</th>
+              <th className="px-6 py-4 text-right font-black tracking-wider text-[10px] text-emerald-300">CONFORM QTY</th>
+              <th className="px-6 py-4 text-right font-black tracking-wider text-[10px] text-slate-300">GAP</th>
+              <th className="px-6 py-4 text-center font-black tracking-wider text-[10px] text-slate-300">PROGRESS %</th>
+              <th className="px-6 py-4 text-right font-black tracking-wider text-[10px] text-red-300">SCRAP QTY</th>
+              <th className="px-6 py-4 text-right font-black tracking-wider text-[10px] text-red-300">SCRAP %</th>
+              <th className="px-6 py-4 text-center font-black tracking-wider text-[10px] text-slate-300">STATUS</th>
             </tr>
           </thead>
-          <tbody>
+          
+          <tbody className="divide-y divide-slate-100">
             {tableData.map((row, index) => {
               const isGlobal = row.department === 'Global Performance';
+              
+              let progressBg = 'bg-red-50 text-red-700 border-red-200';
+              let progressBarColor = 'bg-red-500';
+              if (row.progress >= 1.0) {
+                progressBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                progressBarColor = 'bg-emerald-500';
+              } else if (row.progress >= 0.8) {
+                progressBg = 'bg-amber-50 text-amber-700 border-amber-200';
+                progressBarColor = 'bg-amber-500';
+              }
+
+              let gapBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+              let gapSign = '';
+              if (row.gap > 0) {
+                gapBg = 'bg-red-50 text-red-700 border-red-200';
+                gapSign = '+';
+              }
+
               return (
                 <tr 
                   key={index} 
-                  className={`border-b hover:bg-gray-50 transition-colors ${isGlobal ? 'bg-red-50 font-bold text-gray-900 border-t-2 border-red-200' : 'bg-white'}`}
+                  className={`transition-colors duration-150 ${
+                    isGlobal 
+                      ? 'bg-gradient-to-r from-slate-900 to-indigo-950 font-black text-white border-t-2 border-indigo-500 hover:from-slate-950 hover:to-indigo-900' 
+                      : index % 2 === 0 
+                        ? 'bg-white hover:bg-slate-50/80' 
+                        : 'bg-slate-50/40 hover:bg-slate-50/85'
+                  }`}
                 >
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {row.department}
+                  {/* Department */}
+                  <td className="px-6 py-4 whitespace-nowrap font-bold text-slate-900">
+                    <span className={isGlobal ? 'text-white tracking-wider font-extrabold text-sm' : 'text-slate-800'}>
+                      {row.department}
+                    </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  
+                  {/* Target */}
+                  <td className={`px-6 py-4 text-right font-semibold font-mono ${isGlobal ? 'text-slate-200' : 'text-slate-600'}`}>
                     {formatNumber(row.target)}
                   </td>
-                  <td className="px-6 py-4 text-right font-medium">
+                  
+                  {/* Actual Prod */}
+                  <td className={`px-6 py-4 text-right font-bold font-mono ${isGlobal ? 'text-white' : 'text-slate-800'}`}>
                     {formatNumber(row.actualProduction)}
                   </td>
-                  <td className="px-6 py-4 text-right text-green-600">
+                  
+                  {/* Conform Qty */}
+                  <td className={`px-6 py-4 text-right font-extrabold font-mono bg-emerald-50/10 ${isGlobal ? 'text-emerald-400' : 'text-emerald-600'}`}>
                     {formatNumber(row.conformQty)}
                   </td>
-                  <td className={`px-6 py-4 text-right ${row.gap > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    {row.gap > 0 ? '+' : ''}{formatNumber(row.gap)}
+                  
+                  {/* Gap */}
+                  <td className="px-6 py-4 text-right font-mono">
+                    <span className={`inline-block px-2 py-0.5 rounded border font-bold ${isGlobal ? 'bg-white/10 border-white/20 text-white' : gapBg}`}>
+                      {gapSign}{formatNumber(row.gap)}
+                    </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end">
-                      <span className={`mr-2 ${row.progress < 0.8 ? 'text-red-600 font-bold' : row.progress >= 1 ? 'text-green-600 font-bold' : 'text-orange-500 font-bold'}`}>
+                  
+                  {/* Progress % */}
+                  <td className="px-6 py-4 font-mono">
+                    <div className="flex flex-col items-center max-w-[120px] mx-auto">
+                      <span className={`inline-flex px-2 py-0.5 rounded border text-[11px] font-extrabold shadow-sm ${isGlobal ? 'bg-white/15 border-white/25 text-white' : progressBg}`}>
                         {formatPercent(row.progress)}
                       </span>
+                      <div className="w-full bg-slate-200/50 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                        <div className={`${isGlobal ? 'bg-indigo-400' : progressBarColor} h-full rounded-full`} style={{ width: `${Math.min(row.progress * 100, 100)}%` }}></div>
+                      </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-right text-red-600">
+                  
+                  {/* Scrap Qty */}
+                  <td className={`px-6 py-4 text-right font-bold font-mono bg-red-50/5 ${isGlobal ? 'text-red-400' : 'text-red-600'}`}>
                     {formatNumber(row.scrapQty)}
                   </td>
-                  <td className="px-6 py-4 text-right font-medium">
-                    <span className={row.scrapRate > 0.05 ? 'text-red-600 animate-pulse' : 'text-gray-900'}>
+                  
+                  {/* Scrap % */}
+                  <td className={`px-6 py-4 text-right font-semibold font-mono ${isGlobal ? 'text-slate-200' : 'text-slate-700'}`}>
+                    <span className={row.scrapRate > 0.05 && !isGlobal ? 'text-red-600 font-extrabold animate-pulse' : ''}>
                       {formatPercent(row.scrapRate)}
                     </span>
                   </td>
+                  
+                  {/* Status */}
                   <td className="px-6 py-4 text-center">
                     {getStatusBadge(row.status)}
                   </td>
