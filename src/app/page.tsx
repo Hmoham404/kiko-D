@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useMemo } from 'react';
-import { Target, TrendingUp, AlertTriangle, Crosshair, Award, AlertCircle, FileSpreadsheet, Trash2, List, Calendar, LayoutGrid } from 'lucide-react';
+import { Target, TrendingUp, AlertTriangle, Crosshair, Award, AlertCircle, FileSpreadsheet, Trash2, List, Calendar, LayoutGrid, Syringe, Activity } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { ImportModal } from '@/components/ImportModal';
 import { KpiCard } from '@/components/KpiCard';
@@ -8,9 +8,11 @@ import { PerformanceTable } from '@/components/PerformanceTable';
 import { DailyTrackingSheet } from '@/components/DailyTrackingSheet';
 import { SubComponentsTable } from '@/components/SubComponentsTable';
 import { DashboardCharts } from '@/components/Charts';
+import { InjectionDayView } from '@/components/InjectionDayView';
+import { GlobalDailyView } from '@/components/GlobalDailyView';
 import { parseExcelFile } from '@/lib/excelParser';
 
-type TabType = 'daily' | 'summary' | 'subcomponents';
+type TabType = 'daily' | 'summary' | 'subcomponents' | 'injection-day' | 'report-day';
 
 export default function DashboardPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -252,6 +254,18 @@ export default function DashboardPage() {
             <div className="border-b border-gray-200">
               <div className="flex space-x-8">
                 <button
+                  onClick={() => setActiveTab('report-day')}
+                  className={`py-4 px-1 border-b-2 font-bold text-sm flex items-center transition-colors ${
+                    activeTab === 'report-day'
+                      ? 'border-red-600 text-red-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <Activity className="w-4 h-4 mr-2" />
+                  Rapport Journalier Premium
+                </button>
+
+                <button
                   onClick={() => setActiveTab('daily')}
                   className={`py-4 px-1 border-b-2 font-bold text-sm flex items-center transition-colors ${
                     activeTab === 'daily'
@@ -260,7 +274,7 @@ export default function DashboardPage() {
                   }`}
                 >
                   <Calendar className="w-4 h-4 mr-2" />
-                  Tableau Journalier Global (Update in Progress)
+                  Tableau Journalier Global
                 </button>
                 
                 <button
@@ -272,7 +286,7 @@ export default function DashboardPage() {
                   }`}
                 >
                   <List className="w-4 h-4 mr-2" />
-                  Synthèse par Département
+                  Synthèse Totale Dept
                 </button>
 
                 <button
@@ -284,20 +298,30 @@ export default function DashboardPage() {
                   }`}
                 >
                   <LayoutGrid className="w-4 h-4 mr-2" />
-                  Détail Injection (Base, Cover, Insert)
+                  Détail Injection
                 </button>
               </div>
             </div>
 
             {/* Performance Tables Render */}
             <div className="animate-in fade-in duration-300">
+              {activeTab === 'report-day' && (
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <span className="w-2 h-6 bg-red-600 rounded-sm mr-2"></span>
+                    Daily Performance Overview — All Departments
+                  </h2>
+                  <GlobalDailyView data={productionData} subComponentsData={subComponentsData} />
+                </div>
+              )}
+
               {activeTab === 'daily' && (
                 <div>
                   <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
                     <span className="w-2 h-6 bg-red-600 rounded-sm mr-2"></span>
                     Daily Tracking Sheet
                   </h2>
-                  <DailyTrackingSheet data={productionData} />
+                  <DailyTrackingSheet data={productionData} subComponentsData={subComponentsData} />
                 </div>
               )}
 
@@ -318,6 +342,16 @@ export default function DashboardPage() {
                     Injection Sub-Components Breakdown
                   </h2>
                   <SubComponentsTable data={subComponentsData} />
+                </div>
+              )}
+
+              {activeTab === 'injection-day' && (
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <span className="w-2 h-6 bg-purple-600 rounded-sm mr-2"></span>
+                    Injection — Vue par Jour (Base, Cover, Insert)
+                  </h2>
+                  <InjectionDayView data={subComponentsData} />
                 </div>
               )}
             </div>

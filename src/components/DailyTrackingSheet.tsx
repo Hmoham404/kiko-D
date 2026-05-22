@@ -1,10 +1,11 @@
 import React from 'react';
-import { ProductionData } from '@/store/useStore';
+import { ProductionData, SubComponentData } from '@/store/useStore';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 interface DailyTrackingSheetProps {
   data: ProductionData[];
+  subComponentsData: SubComponentData[];
 }
 
 const DEPARTMENTS = [
@@ -16,8 +17,14 @@ const DEPARTMENTS = [
   { storeName: 'Packaging', displayName: 'PACKAGING', colorClass: 'bg-gradient-to-r from-emerald-700 to-green-850', borderClass: 'border-l-emerald-600' }
 ];
 
-export const DailyTrackingSheet: React.FC<DailyTrackingSheetProps> = ({ data }) => {
-  if (!data || data.length === 0) {
+export const DailyTrackingSheet: React.FC<DailyTrackingSheetProps> = ({ data, subComponentsData }) => {
+  // Get unique sorted dates from both main data and sub-components
+  const uniqueDates = Array.from(new Set([
+    ...data.map(d => d.date),
+    ...(subComponentsData || []).map(s => s.date)
+  ])).filter(Boolean).sort();
+
+  if (uniqueDates.length === 0) {
     return (
       <div className="bg-white/80 backdrop-blur-md border border-slate-100 rounded-2xl p-12 text-center text-slate-500 shadow-xl max-w-lg mx-auto">
         <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -30,9 +37,6 @@ export const DailyTrackingSheet: React.FC<DailyTrackingSheetProps> = ({ data }) 
       </div>
     );
   }
-
-  // Get unique sorted dates
-  const uniqueDates = Array.from(new Set(data.map(d => d.date))).sort();
 
   const formatNum = (num: number) => {
     return new Intl.NumberFormat('fr-FR').format(num);
@@ -86,6 +90,13 @@ export const DailyTrackingSheet: React.FC<DailyTrackingSheetProps> = ({ data }) 
               <th className="px-4 py-5 border border-slate-800 sticky left-0 bg-slate-950 z-30 min-w-[140px] text-center tracking-wider font-black text-xs shadow-[2px_0_5px_rgba(0,0,0,0.2)]">
                 JOUR / DATE
               </th>
+              {/* GLOBAL TOTALS COLUMN GROUP */}
+              <th 
+                colSpan={7} 
+                className="px-2 py-3 border border-slate-800 text-center tracking-widest font-black text-xs text-white bg-gradient-to-r from-red-700 to-red-900"
+              >
+                <span className="drop-shadow-md italic">TOTAL FACTORY GLOBAL</span>
+              </th>
               {DEPARTMENTS.map(dept => (
                 <th 
                   colSpan={7} 
@@ -100,6 +111,15 @@ export const DailyTrackingSheet: React.FC<DailyTrackingSheetProps> = ({ data }) 
             {/* Sub-Header Row */}
             <tr className="bg-slate-50 text-slate-700 font-bold uppercase text-center border-b border-slate-200">
               <th className="px-4 py-3 border-r border-slate-200 sticky left-0 bg-slate-50 z-10"></th>
+              {/* Global sub-headers */}
+              <th className="px-2 py-3 border-r border-red-200 text-center min-w-[85px] text-[9px] text-red-600 font-black tracking-wider bg-red-50/50">TGT</th>
+              <th className="px-2 py-3 border-r border-red-200 text-center min-w-[90px] text-[9px] text-red-600 font-black tracking-wider bg-red-50/50">PROD</th>
+              <th className="px-2 py-3 border-r border-red-200 text-center min-w-[95px] text-[9px] text-red-600 font-black tracking-wider bg-red-50/50">CONFORM</th>
+              <th className="px-2 py-3 border-r border-red-200 text-center min-w-[95px] text-[9px] text-red-600 font-black tracking-wider bg-red-50/50">% PROGRESS</th>
+              <th className="px-2 py-3 border-r border-red-200 text-center min-w-[90px] text-[9px] text-red-600 font-black tracking-wider bg-red-50/50">GAP</th>
+              <th className="px-2 py-3 border-r border-red-200 text-center min-w-[85px] text-[9px] text-red-600 font-black tracking-wider bg-red-50/50">SCRAP</th>
+              <th className="px-2 py-3 border-r border-slate-300 text-center min-w-[85px] text-[9px] text-red-600 font-black tracking-wider bg-red-50/50">% SCRAP</th>
+              
               {DEPARTMENTS.flatMap(dept => [
                 <th key={`${dept.storeName}-tgt`} className="px-2 py-3 border-r border-slate-200 text-center min-w-[85px] text-[9px] text-slate-500 font-black tracking-wider">TARGET</th>,
                 <th key={`${dept.storeName}-prd`} className="px-2 py-3 border-r border-slate-200 text-center min-w-[90px] text-[9px] text-slate-500 font-black tracking-wider">TOTAL PROD</th>,
@@ -129,14 +149,116 @@ export const DailyTrackingSheet: React.FC<DailyTrackingSheetProps> = ({ data }) 
                       {getDayOfWeek(date)}
                     </span>
                   </td>
+
+                  {/* GLOBAL CALCULATION FOR THE DAY */}
+                  {(() => {
+                    const deptsData = DEPARTMENTS.map(dept => {
+                      let item = data.find(d => d.date === date && d.department === dept.storeName);
+                      if (dept.storeName === 'Injection' && !item) {
+                        const subsForDate = (subComponentsData || []).filter(s => s.date === date);
+                        if (subsForDate.length > 0) {
+                          item = {
+                            department: 'Injection',
+                            date: date,
+                            week: '',
+                            target: subsForDate.reduce((sum, s) => sum + s.target, 0),
+                            actualProduction: subsForDate.reduce((sum, s) => sum + s.actualProduction, 0),
+                            conformQty: subsForDate.reduce((sum, s) => sum + s.conformQty, 0),
+                            scrapQty: subsForDate.reduce((sum, s) => sum + s.scrapQty, 0),
+                            progress: 0,
+                            gap: 0,
+                            scrapRate: 0,
+                            status: 'orange'
+                          };
+                        }
+                      }
+                      return item;
+                    }).filter(Boolean);
+
+                    const global = {
+                      target: deptsData.reduce((sum, d) => sum + (d?.target || 0), 0),
+                      actual: deptsData.reduce((sum, d) => sum + (d?.actualProduction || 0), 0),
+                      conform: deptsData.reduce((sum, d) => sum + (d?.conformQty || 0), 0),
+                      scrap: deptsData.reduce((sum, d) => sum + (d?.scrapQty || 0), 0),
+                    };
+
+                    const progress = global.target > 0 ? global.conform / global.target : 0;
+                    const scrapRate = global.actual > 0 ? global.scrap / global.actual : 0;
+                    const gap = global.target - global.conform;
+
+                    const getStatusColor = (prog: number) => {
+                      if (prog >= 1) return 'text-emerald-600 bg-emerald-50';
+                      if (prog >= 0.8) return 'text-amber-600 bg-amber-50';
+                      return 'text-red-600 bg-red-50';
+                    };
+
+                    return [
+                      <td key="global-target" className="px-2 py-3 border-r border-slate-200 text-center font-bold text-slate-900 bg-red-50/20">{formatNum(global.target)}</td>,
+                      <td key="global-actual" className="px-2 py-3 border-r border-slate-200 text-center font-bold text-slate-900 bg-red-50/20">{formatNum(global.actual)}</td>,
+                      <td key="global-conform" className="px-2 py-3 border-r border-slate-200 text-center font-bold text-slate-900 bg-red-50/20">{formatNum(global.conform)}</td>,
+                      <td key="global-progress" className={`px-2 py-3 border-r border-slate-200 text-center font-black ${getStatusColor(progress)}`}>{formatPct(progress)}</td>,
+                      <td key="global-gap" className={`px-2 py-3 border-r border-slate-200 text-center font-bold ${gap <= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{gap > 0 ? `-${formatNum(gap)}` : `+${formatNum(Math.abs(gap))}`}</td>,
+                      <td key="global-scrap" className="px-2 py-3 border-r border-slate-200 text-center font-bold text-red-500 bg-red-50/10">{formatNum(global.scrap)}</td>,
+                      <td key="global-scrap-rate" className={`px-2 py-3 border-r border-slate-300 text-center font-bold ${scrapRate > 0.05 ? 'text-red-600 bg-red-50' : 'text-slate-500'}`}>{formatPct(scrapRate)}</td>
+                    ];
+                  })()}
                   
                   {DEPARTMENTS.flatMap(dept => {
-                    const item = data.find(d => d.date === date && d.department === dept.storeName);
+                    let item = data.find(d => d.date === date && d.department === dept.storeName);
                     
-                    // Cumulative Gap = SUM(targets up to this date) - SUM(conform Qty up to this date)
-                    const itemsUpToDate = data.filter(d => d.department === dept.storeName && d.date <= date);
-                    const cumTarget = itemsUpToDate.reduce((sum, d) => sum + d.target, 0);
-                    const cumConform = itemsUpToDate.reduce((sum, d) => sum + d.conformQty, 0);
+                    // FALLBACK FOR INJECTION: Aggregation from sub-components
+                    const subsForDate = (subComponentsData || []).filter(s => s.date === date);
+                    
+                    if (dept.storeName === 'Injection') {
+                      if (!item && subsForDate.length > 0) {
+                        // Create a virtual aggregate item
+                        item = {
+                          department: 'Injection',
+                          date: date,
+                          week: '',
+                          target: subsForDate.reduce((sum, s) => sum + s.target, 0),
+                          actualProduction: subsForDate.reduce((sum, s) => sum + s.actualProduction, 0),
+                          conformQty: subsForDate.reduce((sum, s) => sum + s.conformQty, 0),
+                          scrapQty: subsForDate.reduce((sum, s) => sum + s.scrapQty, 0),
+                          progress: 0,
+                          gap: 0,
+                          scrapRate: 0,
+                          status: 'orange'
+                        };
+                        item.progress = item.target > 0 ? item.conformQty / item.target : 0;
+                        item.scrapRate = item.actualProduction > 0 ? item.scrapQty / item.actualProduction : 0;
+                        item.gap = item.target - item.conformQty;
+                      }
+                    }
+
+                    // Precise Cumulative Gap Calculation
+                    // We need to sum up everything up to 'date' for this department
+                    const allTargetUpToDate = data
+                      .filter(d => d.department === dept.storeName && d.date <= date)
+                      .reduce((sum, d) => sum + d.target, 0);
+                    
+                    const allConformUpToDate = data
+                      .filter(d => d.department === dept.storeName && d.date <= date)
+                      .reduce((sum, d) => sum + d.conformQty, 0);
+
+                    let cumTarget = allTargetUpToDate;
+                    let cumConform = allConformUpToDate;
+
+                    // If Injection, we must ALSO check dates where there was NO main record but there WERE subcomponents
+                    if (dept.storeName === 'Injection') {
+                      const datesWithOnlySubs = uniqueDates.filter(d => 
+                        d <= date && 
+                        !data.some(p => p.date === d && p.department === 'Injection') &&
+                        (subComponentsData || []).some(s => s.date === d)
+                      );
+
+                      datesWithOnlySubs.forEach(d => {
+                        const daySubs = (subComponentsData || []).filter(s => s.date === d);
+                        cumTarget += daySubs.reduce((sum, s) => sum + s.target, 0);
+                        cumConform += daySubs.reduce((sum, s) => sum + s.conformQty, 0);
+                      });
+                    }
+
                     const cumGap = cumTarget - cumConform;
 
                     if (!item) {
