@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { ProductionData, SubComponentData } from '@/store/useStore';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { CalendarDays, ChevronLeft, ChevronRight, Target, TrendingUp, CheckCircle, AlertTriangle, Package, Activity, Award } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Target, CheckCircle, AlertTriangle, Activity, Award } from 'lucide-react';
 
 interface GlobalDailyViewProps {
   data: ProductionData[];
@@ -19,7 +19,24 @@ const DEPARTMENTS = [
   { storeName: 'Packaging', displayName: 'PACKAGING', color: 'emerald' }
 ];
 
+const FACTORY_GROUPS = [
+  {
+    key: 'ASSEMBLAGE',
+    title: 'FACTORY GLOBAL PERFORMANCE',
+    subtitle: 'Assemblage only',
+    departments: ['Assemblage'],
+  },
+  {
+    key: 'SFG',
+    title: 'FACTORY GLOBAL PERFORMANCE SFG',
+    subtitle: 'Injection + Welding + Printing + Metallisation',
+    departments: ['Injection', 'Soudure', 'US serigraphie', 'Metallisation'],
+  },
+];
+
 export const GlobalDailyView: React.FC<GlobalDailyViewProps> = ({ data, subComponentsData }) => {
+  const [groupFilter, setGroupFilter] = useState<'all' | 'ASSEMBLAGE' | 'SFG'>('ASSEMBLAGE');
+
   const availableDates = useMemo(() => {
     const dates = new Set([...data.map(d => d.date), ...subComponentsData.map(s => s.date)]);
     return Array.from(dates).sort();
@@ -34,32 +51,6 @@ export const GlobalDailyView: React.FC<GlobalDailyViewProps> = ({ data, subCompo
   const canGoNext = currentIndex < availableDates.length - 1;
 
   const getDayData = (deptName: string) => {
-    if (deptName === 'FACTORY TOTAL') {
-      const allDepts = DEPARTMENTS.map(d => getDayData(d.storeName)).filter(Boolean) as ProductionData[];
-      if (allDepts.length === 0) return null;
-
-      const totalTarget = allDepts.reduce((sum, d) => sum + d.target, 0);
-      const totalActual = allDepts.reduce((sum, d) => sum + d.actualProduction, 0);
-      const totalConform = allDepts.reduce((sum, d) => sum + d.conformQty, 0);
-      const totalScrap = allDepts.reduce((sum, d) => sum + d.scrapQty, 0);
-
-      const progress = totalTarget > 0 ? totalConform / totalTarget : 0;
-
-      return {
-        department: 'FACTORY TOTAL',
-        date: selectedDate,
-        target: totalTarget,
-        actualProduction: totalActual,
-        conformQty: totalConform,
-        scrapQty: totalScrap,
-        progress: progress,
-        gap: totalTarget - totalConform,
-        scrapRate: totalActual > 0 ? totalScrap / totalActual : 0,
-        status: progress < 0.8 ? 'critical' : progress < 1 ? 'orange' : 'green',
-        week: ''
-      } as ProductionData;
-    }
-
     let item = data.find(d => d.date === selectedDate && d.department === deptName);
     
     // Fallback for Injection
@@ -89,7 +80,33 @@ export const GlobalDailyView: React.FC<GlobalDailyViewProps> = ({ data, subCompo
     return item;
   };
 
+  const getFactoryGroupData = (group: typeof FACTORY_GROUPS[number]) => {
+    const groupData = group.departments.map(deptName => getDayData(deptName)).filter(Boolean) as ProductionData[];
+    if (groupData.length === 0) return null;
+
+    const totalTarget = groupData.reduce((sum, d) => sum + d.target, 0);
+    const totalActual = groupData.reduce((sum, d) => sum + d.actualProduction, 0);
+    const totalConform = groupData.reduce((sum, d) => sum + d.conformQty, 0);
+    const totalScrap = groupData.reduce((sum, d) => sum + d.scrapQty, 0);
+    const progress = totalTarget > 0 ? totalConform / totalTarget : 0;
+
+    return {
+      department: group.key,
+      date: selectedDate,
+      target: totalTarget,
+      actualProduction: totalActual,
+      conformQty: totalConform,
+      scrapQty: totalScrap,
+      progress,
+      gap: totalTarget - totalConform,
+      scrapRate: totalActual > 0 ? totalScrap / totalActual : 0,
+      status: progress < 0.8 ? 'critical' : progress < 1 ? 'orange' : 'green',
+      week: '',
+    } as ProductionData;
+  };
+
   const formatNum = (num: number) => new Intl.NumberFormat('fr-FR').format(num);
+  const visibleFactoryGroups = FACTORY_GROUPS.filter(group => groupFilter === 'all' || group.key === groupFilter);
 
   if (availableDates.length === 0) return null;
 
@@ -142,11 +159,61 @@ export const GlobalDailyView: React.FC<GlobalDailyViewProps> = ({ data, subCompo
         </button>
       </div>
 
-      {/* Grid of Department Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Factory Total Card */}
-        {(() => {
-          const item = getDayData('FACTORY TOTAL');
+      {/* Factory Performance Cards */}
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Factory View</p>
+            <p className="text-sm font-semibold text-slate-700">Filtrer la performance globale</p>
+          </div>
+          <div className="inline-flex rounded-xl border border-slate-200 p-1 bg-slate-50">
+            <button
+              onClick={() => setGroupFilter('ASSEMBLAGE')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors ${
+                groupFilter === 'ASSEMBLAGE' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'
+              }`}
+            >
+              Assemblage Only
+            </button>
+            <button
+              onClick={() => setGroupFilter('SFG')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors ${
+                groupFilter === 'SFG' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'
+              }`}
+            >
+              SFG
+            </button>
+            <button
+              onClick={() => setGroupFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors ${
+                groupFilter === 'all' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'
+              }`}
+            >
+              Tous
+            </button>
+          </div>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.18em] mb-2">Légende Statut</p>
+          <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-700">
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1">
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+              Excellent (≥ 100%)
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1">
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-500"></span>
+              À surveiller (80% - 99.9%)
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1">
+              <span className="h-2.5 w-2.5 rounded-full bg-red-500"></span>
+              Critique (&lt; 80%)
+            </span>
+          </div>
+        </div>
+
+        <div className={`grid grid-cols-1 gap-6 ${visibleFactoryGroups.length > 1 ? 'xl:grid-cols-2' : ''}`}>
+        {visibleFactoryGroups.map(group => {
+          const item = getFactoryGroupData(group);
           if (!item) return null;
 
           const progress = item.progress * 100;
@@ -154,7 +221,7 @@ export const GlobalDailyView: React.FC<GlobalDailyViewProps> = ({ data, subCompo
           const isSuccess = progress >= 100;
           
           return (
-            <div className={`md:col-span-2 lg:col-span-3 rounded-3xl shadow-2xl border overflow-hidden hover:scale-[1.01] transition-all duration-300 group ${
+            <div key={group.key} className={`rounded-3xl shadow-2xl border overflow-hidden hover:scale-[1.01] transition-all duration-300 group ${
               isCritical ? 'bg-red-50/50 border-red-200' : 
               isSuccess ? 'bg-emerald-50/50 border-emerald-200' : 
               'bg-slate-900 border-slate-800'
@@ -166,10 +233,10 @@ export const GlobalDailyView: React.FC<GlobalDailyViewProps> = ({ data, subCompo
               }`}>
                 <div className="relative z-10 flex justify-between items-center">
                   <div>
-                    <h3 className="text-2xl font-black tracking-widest uppercase italic">FACTORY GLOBAL PERFORMANCE</h3>
+                    <h3 className="text-2xl font-black tracking-widest uppercase italic">{group.title}</h3>
                     <p className={`text-xs font-bold opacity-80 uppercase tracking-tighter mt-1 ${
                       isCritical ? 'text-red-100' : 'text-slate-300'
-                    }`}>Total combined production metrics for all departments</p>
+                    }`}>{group.subtitle}</p>
                   </div>
                   <Award className="w-10 h-10 text-white animate-bounce-slow" />
                 </div>
@@ -194,7 +261,7 @@ export const GlobalDailyView: React.FC<GlobalDailyViewProps> = ({ data, subCompo
                   </span>
                   <span className={`text-[10px] font-bold uppercase tracking-widest ${
                     isCritical || isSuccess ? 'text-slate-500' : 'text-slate-400'
-                  }`}>Global Efficiency</span>
+                  }`}>Efficacité Globale</span>
                 </div>
 
                 <div className="space-y-4 md:col-span-3">
@@ -260,8 +327,12 @@ export const GlobalDailyView: React.FC<GlobalDailyViewProps> = ({ data, subCompo
               </div>
             </div>
           );
-        })()}
+        })}
+        </div>
+      </div>
 
+      {/* Grid of Department Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {DEPARTMENTS.map(dept => {
           const item = getDayData(dept.storeName);
           if (!item) return null;
@@ -317,7 +388,7 @@ export const GlobalDailyView: React.FC<GlobalDailyViewProps> = ({ data, subCompo
                     <span className={`text-4xl font-black ${statusColor} drop-shadow-sm`}>{progress.toFixed(1)}%</span>
                   </div>
                   <div className="flex flex-col items-end">
-                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Gap Status</p>
+                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Statut Gap</p>
                     <span className={`text-xl font-black px-3 py-1 rounded-lg bg-white/60 border ${item.gap <= 0 ? 'text-emerald-600 border-emerald-100' : 'text-red-600 border-red-100'}`}>
                       {item.gap > 0 ? `+${formatNum(item.gap)}` : formatNum(item.gap)}
                     </span>
@@ -327,7 +398,7 @@ export const GlobalDailyView: React.FC<GlobalDailyViewProps> = ({ data, subCompo
                 <div className="grid grid-cols-2 pt-4 border-t border-slate-100 gap-4">
                   <div className="flex items-center text-red-600 font-black text-sm">
                     <AlertTriangle className="w-5 h-5 mr-2" />
-                    <span>SCAP: {formatNum(item.scrapQty)}</span>
+                    <span>SCRAP: {formatNum(item.scrapQty)}</span>
                   </div>
                   <div className="flex flex-col items-end">
                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Scrap Rate</p>

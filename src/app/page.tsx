@@ -112,7 +112,7 @@ export default function DashboardPage() {
       <div className="relative z-10 flex flex-col min-h-screen">
         {/* Header */}
         <header className="bg-white/85 backdrop-blur-md border-b-2 border-red-600 sticky top-0 z-50 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+          <div className="max-w-[96rem] mx-auto px-3 sm:px-5 lg:px-6 py-4 flex justify-between items-center">
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-3 bg-gray-50 p-2 rounded-lg border border-gray-100 shadow-sm">
 
@@ -120,15 +120,15 @@ export default function DashboardPage() {
               <img src="/logo myc.jpg" alt="MYC Beauty" className="h-8 object-contain rounded" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-800 leading-tight">MYC Performance</h1>
-              <p className="text-xs text-gray-500 font-medium tracking-wide uppercase">MYC Dashboard</p>
+              <h1 className="text-2xl font-bold text-gray-800 leading-tight">MYC Performance</h1>
+              <p className="text-sm text-gray-500 font-medium tracking-wide uppercase">MYC Dashboard</p>
             </div>
           </div>
           <div className="flex gap-3">
             {productionData.length > 0 && (
               <button 
                 onClick={clearData}
-                className="flex items-center px-4 py-2 bg-white text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors shadow-sm text-sm font-medium"
+                className="flex items-center px-4 py-2 bg-white text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors shadow-sm text-base font-medium"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Effacer
@@ -136,7 +136,7 @@ export default function DashboardPage() {
             )}
             <button 
               onClick={() => setIsImportModalOpen(true)}
-              className="flex items-center px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors shadow-sm text-sm font-medium"
+              className="flex items-center px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors shadow-sm text-base font-medium"
             >
               <FileSpreadsheet className="w-4 h-4 mr-2" />
               Importer Daily Prod
@@ -145,7 +145,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
+      <main className="max-w-[96rem] mx-auto px-3 sm:px-5 lg:px-6 py-8 flex-grow">
 
         {!productionData || productionData.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 bg-white rounded-xl shadow-sm border border-gray-100">
@@ -255,7 +255,7 @@ export default function DashboardPage() {
               <div className="flex space-x-8">
                 <button
                   onClick={() => setActiveTab('report-day')}
-                  className={`py-4 px-1 border-b-2 font-bold text-sm flex items-center transition-colors ${
+                  className={`py-4 px-2 border-b-2 font-bold text-base flex items-center transition-colors ${
                     activeTab === 'report-day'
                       ? 'border-red-600 text-red-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -267,7 +267,7 @@ export default function DashboardPage() {
 
                 <button
                   onClick={() => setActiveTab('daily')}
-                  className={`py-4 px-1 border-b-2 font-bold text-sm flex items-center transition-colors ${
+                  className={`py-4 px-2 border-b-2 font-bold text-base flex items-center transition-colors ${
                     activeTab === 'daily'
                       ? 'border-red-600 text-red-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -279,7 +279,7 @@ export default function DashboardPage() {
                 
                 <button
                   onClick={() => setActiveTab('summary')}
-                  className={`py-4 px-1 border-b-2 font-bold text-sm flex items-center transition-colors ${
+                  className={`py-4 px-2 border-b-2 font-bold text-base flex items-center transition-colors ${
                     activeTab === 'summary'
                       ? 'border-red-600 text-red-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -291,7 +291,7 @@ export default function DashboardPage() {
 
                 <button
                   onClick={() => setActiveTab('subcomponents')}
-                  className={`py-4 px-1 border-b-2 font-bold text-sm flex items-center transition-colors ${
+                  className={`py-4 px-2 border-b-2 font-bold text-base flex items-center transition-colors ${
                     activeTab === 'subcomponents'
                       ? 'border-red-600 text-red-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -307,7 +307,7 @@ export default function DashboardPage() {
             <div className="animate-in fade-in duration-300">
               {activeTab === 'report-day' && (
                 <div>
-                  <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                  <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center">
                     <span className="w-2 h-6 bg-red-600 rounded-sm mr-2"></span>
                     Daily Performance Overview — All Departments
                   </h2>
@@ -317,7 +317,7 @@ export default function DashboardPage() {
 
               {activeTab === 'daily' && (
                 <div>
-                  <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                  <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center">
                     <span className="w-2 h-6 bg-red-600 rounded-sm mr-2"></span>
                     Daily Tracking Sheet
                   </h2>
@@ -327,7 +327,7 @@ export default function DashboardPage() {
 
               {activeTab === 'summary' && (
                 <div>
-                  <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                  <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center">
                     <span className="w-2 h-6 bg-red-600 rounded-sm mr-2"></span>
                     Department Performance Summary
                   </h2>
@@ -337,7 +337,7 @@ export default function DashboardPage() {
 
               {activeTab === 'subcomponents' && (
                 <div>
-                  <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                  <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center">
                     <span className="w-2 h-6 bg-red-600 rounded-sm mr-2"></span>
                     Injection Sub-Components Breakdown
                   </h2>
@@ -347,7 +347,7 @@ export default function DashboardPage() {
 
               {activeTab === 'injection-day' && (
                 <div>
-                  <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                  <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center">
                     <span className="w-2 h-6 bg-purple-600 rounded-sm mr-2"></span>
                     Injection — Vue par Jour (Base, Cover, Insert)
                   </h2>
@@ -358,7 +358,7 @@ export default function DashboardPage() {
 
             {/* Charts */}
             <div>
-              <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center">
                 <span className="w-2 h-6 bg-red-600 rounded-sm mr-2"></span>
                 Performance Analytics
               </h2>

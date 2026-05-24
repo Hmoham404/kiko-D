@@ -186,7 +186,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
               <RechartsTooltip formatter={(value: any) => `${Number(value).toFixed(1)}%`} cursor={{ stroke: '#cbd5e1', strokeWidth: 2, strokeDasharray: '3 3' }} />
               <Legend iconType="circle" />
               <Line 
-                type="monotone" 
+                type="linear" 
                 dataKey="progress" 
                 name="Progress %" 
                 stroke="url(#colorProgress)" 
@@ -247,7 +247,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
               <YAxis tickFormatter={(val) => `${val}%`} domain={[0, 'auto']} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
               <RechartsTooltip formatter={(value: any) => `${Number(value).toFixed(1)}%`} />
               <Legend iconType="circle" />
-              <Line type="monotone" dataKey="scrapPercent" name="Scrap %" stroke="#f97316" strokeWidth={3} dot={{}} />
+              <Line type="linear" dataKey="scrapPercent" name="Scrap %" stroke="#f97316" strokeWidth={3} dot={{}} />
             </LineChart>
           </ResponsiveContainer>
         </div>
