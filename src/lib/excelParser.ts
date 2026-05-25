@@ -1,310 +1,411 @@
 import * as XLSX from 'xlsx';
+import { format } from 'date-fns';
 import { ProductionData, SubComponentData } from '@/store/useStore';
-import { format, getWeek } from 'date-fns';
+import { getWeekMetadata } from '@/lib/weeklyMetrics';
 
-const parseExcelDate = (dateVal: any): string => {
+const parseExcelDate = (dateVal: unknown): string => {
   if (dateVal instanceof Date) {
-    // Add 12 hours offset to push past midnight to solve the 1-day shift bug
     const adjusted = new Date(dateVal.getTime() + 12 * 60 * 60 * 1000);
     return format(adjusted, 'yyyy-MM-dd');
   }
+
   if (typeof dateVal === 'number') {
-    // Convert Excel date serial number to UTC Date object manually to avoid timezone shift
     const date = new Date(Math.round((dateVal - 25569) * 86400 * 1000));
     return date.toISOString().slice(0, 10);
   }
+
   if (typeof dateVal === 'string') {
     const trimmed = dateVal.trim();
-    // Check for DD/MM/YYYY or DD-MM-YYYY
     const dmyMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+
     if (dmyMatch) {
       const day = dmyMatch[1].padStart(2, '0');
       const month = dmyMatch[2].padStart(2, '0');
       const year = dmyMatch[3];
       return `${year}-${month}-${day}`;
     }
-    // Try parsing as normal date if it's in standard YYYY-MM-DD
+
     const parsed = Date.parse(trimmed);
-    if (!isNaN(parsed)) {
+    if (!Number.isNaN(parsed)) {
       return new Date(parsed).toISOString().slice(0, 10);
     }
   }
+
   return String(dateVal);
 };
 
-const cleanNumber = (val: any): number => {
+const cleanNumber = (val: unknown): number => {
   if (val === null || val === undefined) return 0;
   if (typeof val === 'number') return val;
-  const str = String(val).trim()
-    .replace(/\s+/g, '') // remove spaces (e.g. "12 500" -> "12500")
-    .replace(/,/g, '.');  // replace comma with dot (e.g. "12,5" -> "12.5")
+
+  const str = String(val)
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/,/g, '.');
+
   const num = Number(str);
-  return isNaN(num) ? 0 : num;
+  return Number.isNaN(num) ? 0 : num;
 };
 
+const buildWeeklyTargetsMap = (targetsByWeekAndDate: Record<string, Record<string, number>>) => {
+  return Object.fromEntries(
+    Object.entries(targetsByWeekAndDate).map(([weekKey, dateTargets]) => [
+      weekKey,
+      Object.values(dateTargets).reduce((sum, value) => sum + value, 0),
+    ])
+  );
+};
+
+const buildObservedDaysMap = <T extends { weekKey: string; date: string }>(items: T[]) => {
+  const daysByWeek: Record<string, Set<string>> = {};
+
+  items.forEach((item) => {
+    if (!daysByWeek[item.weekKey]) {
+      daysByWeek[item.weekKey] = new Set<string>();
+    }
+    daysByWeek[item.weekKey].add(item.date);
+  });
+
+  return Object.fromEntries(
+    Object.entries(daysByWeek).map(([weekKey, dates]) => [weekKey, dates.size || 1])
+  );
+};
+
+type ParsedMainAccumulator = ProductionData;
+type ParsedSubAccumulator = SubComponentData;
+
 export const parseExcelFile = async (
-  file: File, 
-  expectedDepartment: string, 
-  manualTarget: number,
+  file: File,
+  expectedDepartment: string,
+  manualWeeklyTarget: number,
   subTargets?: { base: number; cover: number; insert: number }
-): Promise<{ 
-  data?: ProductionData[], 
-  error?: string, 
-  warnings?: string[],
-  subComponentsData?: SubComponentData[]
+): Promise<{
+  data?: ProductionData[];
+  error?: string;
+  warnings?: string[];
+  subComponentsData?: SubComponentData[];
 }> => {
   return new Promise((resolve) => {
     const reader = new FileReader();
+
     reader.onload = (e) => {
       try {
-        const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
-        
-        // Parse Main Sheet
+        const workbook = XLSX.read(e.target?.result, { type: 'binary', cellDates: true });
+        const warningSet = new Set<string>();
+
         const mainSheetName = workbook.SheetNames[0];
         const mainWorksheet = workbook.Sheets[mainSheetName];
-        
-        const mainRawData: any[][] = XLSX.utils.sheet_to_json(mainWorksheet, { header: 1 });
-        
+        const mainRawData: unknown[][] = XLSX.utils.sheet_to_json(mainWorksheet, { header: 1 });
+
         if (mainRawData.length === 0) {
-            return resolve({ error: `Le fichier ${file.name} est vide ou mal formaté.` });
+          resolve({ error: `Le fichier ${file.name} est vide ou mal formate.` });
+          return;
         }
 
         let headerRowIndex = -1;
-        for (let i = 0; i < Math.min(20, mainRawData.length); i++) {
-            const row = mainRawData[i];
-            if (row && row.some(cell => typeof cell === 'string' && cell.toLowerCase().includes('date'))) {
-                headerRowIndex = i;
-                break;
-            }
+        for (let i = 0; i < Math.min(20, mainRawData.length); i += 1) {
+          const row = mainRawData[i];
+          if (row && row.some((cell) => typeof cell === 'string' && cell.toLowerCase().includes('date'))) {
+            headerRowIndex = i;
+            break;
+          }
         }
 
         if (headerRowIndex === -1) {
-            return resolve({ error: `Impossible de trouver les colonnes dans ${file.name}.` });
+          resolve({ error: `Impossible de trouver les colonnes dans ${file.name}.` });
+          return;
         }
 
-        const headers = mainRawData[headerRowIndex].map(h => typeof h === 'string' ? h.toLowerCase().trim().replace(/[\r\n]+/g, ' ') : '');
-        
-        const dateIdx = headers.findIndex(h => h === 'date' || h.startsWith('date'));
-        const prodIdx = headers.findIndex(h => h.includes('produced') || h.includes('total prod') || h.includes('production'));
-        const conformIdx = headers.findIndex(h => h.includes('conforme') || h.includes('conform') || h.includes('ok') || h.includes('bon'));
-        const scrapIdx = headers.findIndex(h => h.includes('scrap') || h.includes('scrab') || h.includes('rebut') || h.includes('dechet'));
-        const targetIdx = headers.findIndex(h => h.includes('target') || h.includes('objectif') || h.includes('cible'));
+        const headers = mainRawData[headerRowIndex].map((header) =>
+          typeof header === 'string' ? header.toLowerCase().trim().replace(/[\r\n]+/g, ' ') : ''
+        );
+
+        const dateIdx = headers.findIndex((header) => header === 'date' || header.startsWith('date'));
+        const prodIdx = headers.findIndex(
+          (header) => header.includes('produced') || header.includes('total prod') || header.includes('production')
+        );
+        const conformIdx = headers.findIndex(
+          (header) => header.includes('conforme') || header.includes('conform') || header.includes('ok') || header.includes('bon')
+        );
+        const scrapIdx = headers.findIndex(
+          (header) => header.includes('scrap') || header.includes('scrab') || header.includes('rebut') || header.includes('dechet')
+        );
+        const targetIdx = headers.findIndex(
+          (header) => header.includes('target') || header.includes('objectif') || header.includes('cible')
+        );
 
         if (dateIdx === -1 || prodIdx === -1) {
-             return resolve({ error: `Colonnes Date ou Production manquantes dans ${file.name}.` });
+          resolve({ error: `Colonnes Date ou Production manquantes dans ${file.name}.` });
+          return;
         }
 
-        const aggregatedByDate: Record<string, ProductionData> = {};
-        const warningSet = new Set<string>();
+        const aggregatedByDate: Record<string, ParsedMainAccumulator> = {};
+        const weeklyDateTargets: Record<string, Record<string, number>> = {};
 
         let emptyConsecutiveCount = 0;
-        for (let i = headerRowIndex + 1; i < mainRawData.length; i++) {
-            const row = mainRawData[i];
-            if (!row || row.length === 0 || !row[dateIdx]) {
-                emptyConsecutiveCount++;
-                if (emptyConsecutiveCount > 100) {
-                    break; // stop parsing after 100 consecutive empty rows
-                }
-                continue;
+        for (let i = headerRowIndex + 1; i < mainRawData.length; i += 1) {
+          const row = mainRawData[i];
+
+          if (!row || row.length === 0 || !row[dateIdx]) {
+            emptyConsecutiveCount += 1;
+            if (emptyConsecutiveCount > 100) break;
+            continue;
+          }
+
+          emptyConsecutiveCount = 0;
+
+          const formattedDate = parseExcelDate(row[dateIdx]);
+          const { weekKey, weekLabel } = getWeekMetadata(formattedDate);
+          let actualProduction = cleanNumber(row[prodIdx]);
+          const conformQty = cleanNumber(row[conformIdx]);
+          const scrapQty = cleanNumber(row[scrapIdx]);
+          const rowDailyTarget =
+            targetIdx !== -1 && row[targetIdx] !== undefined && row[targetIdx] !== null && String(row[targetIdx]).trim() !== ''
+              ? cleanNumber(row[targetIdx])
+              : 0;
+
+          if (actualProduction === 0 && conformQty === 0 && scrapQty === 0) {
+            continue;
+          }
+
+          if (conformQty > actualProduction) {
+            warningSet.add(
+              `Attention : Conforme Qty (${conformQty}) superieur a Total Production (${actualProduction}) pour ${expectedDepartment} le ${formattedDate}.`
+            );
+            actualProduction = conformQty + scrapQty;
+          }
+
+          if (!aggregatedByDate[formattedDate]) {
+            aggregatedByDate[formattedDate] = {
+              department: expectedDepartment,
+              date: formattedDate,
+              week: weekLabel,
+              weekKey,
+              target: 0,
+              weeklyTarget: 0,
+              actualProduction: 0,
+              conformQty: 0,
+              scrapQty: 0,
+              progress: 0,
+              gap: 0,
+              scrapRate: 0,
+              status: 'red',
+            };
+          }
+
+          if (rowDailyTarget > 0) {
+            const existingDailyTarget = weeklyDateTargets[weekKey]?.[formattedDate];
+            if (!weeklyDateTargets[weekKey]) {
+              weeklyDateTargets[weekKey] = {};
             }
-            emptyConsecutiveCount = 0; // reset
 
-            const dateVal = row[dateIdx];
-            const formattedDate = parseExcelDate(dateVal);
-
-            let actualProduction = cleanNumber(row[prodIdx]);
-            const conformQty = cleanNumber(row[conformIdx]);
-            const scrapQty = cleanNumber(row[scrapIdx]);
-            const rowTarget = targetIdx !== -1 && row[targetIdx] !== undefined && row[targetIdx] !== null && String(row[targetIdx]).trim() !== ''
-                ? cleanNumber(row[targetIdx])
-                : manualTarget;
-
-            if (actualProduction === 0 && conformQty === 0 && scrapQty === 0) {
-                continue;
+            if (existingDailyTarget !== undefined && existingDailyTarget !== rowDailyTarget) {
+              warningSet.add(
+                `Targets differents detectes pour ${expectedDepartment} le ${formattedDate}. La premiere valeur du fichier a ete conservee.`
+              );
+            } else if (existingDailyTarget === undefined) {
+              weeklyDateTargets[weekKey][formattedDate] = rowDailyTarget;
+              aggregatedByDate[formattedDate].target = rowDailyTarget;
             }
+          }
 
-            // Inconsistency detection
-            if (conformQty > actualProduction) {
-                const warnMsg = `Attention : Conforme Qty (${conformQty}) supérieur à Total Production (${actualProduction}) pour ${expectedDepartment} le ${formattedDate}.`;
-                warningSet.add(warnMsg);
-                // Auto-correct
-                actualProduction = conformQty + scrapQty;
-            }
-
-            let week = '';
-            try {
-                const d = new Date(formattedDate);
-                week = `W${getWeek(d)}`;
-            } catch {
-                week = 'W--';
-            }
-
-            if (!aggregatedByDate[formattedDate]) {
-                aggregatedByDate[formattedDate] = {
-                    department: expectedDepartment,
-                    date: formattedDate,
-                    week: week,
-                    target: rowTarget, 
-                    actualProduction: 0,
-                    conformQty: 0,
-                    scrapQty: 0,
-                    progress: 0,
-                    gap: 0,
-                    scrapRate: 0,
-                    status: 'red'
-                };
-            }
-
-            aggregatedByDate[formattedDate].actualProduction += actualProduction;
-            aggregatedByDate[formattedDate].conformQty += conformQty;
-            aggregatedByDate[formattedDate].scrapQty += scrapQty;
+          aggregatedByDate[formattedDate].actualProduction += actualProduction;
+          aggregatedByDate[formattedDate].conformQty += conformQty;
+          aggregatedByDate[formattedDate].scrapQty += scrapQty;
         }
 
-        const parsedData = Object.values(aggregatedByDate).map(data => {
-            let progress = 0;
-            if (data.target > 0) {
-                progress = data.actualProduction / data.target;
-            }
+        const mainItems = Object.values(aggregatedByDate);
+        if (mainItems.length === 0) {
+          resolve({ error: `Aucune donnee trouvee dans le fichier ${file.name}.` });
+          return;
+        }
 
-            let scrapRate = 0;
-            if (data.actualProduction > 0) {
-                scrapRate = data.scrapQty / data.actualProduction;
-            }
+        const weeklyTargetsFromSheet = buildWeeklyTargetsMap(weeklyDateTargets);
+        const observedDaysByWeek = buildObservedDaysMap(mainItems);
 
-            const gap = data.target - data.actualProduction; 
+        const parsedData = mainItems.map((item) => {
+          const observedDays = observedDaysByWeek[item.weekKey] || 1;
+          const weeklyTarget = weeklyTargetsFromSheet[item.weekKey] > 0 ? weeklyTargetsFromSheet[item.weekKey] : manualWeeklyTarget;
+          const dailyTarget = item.target > 0 ? item.target : weeklyTarget / observedDays;
+          const progress = dailyTarget > 0 ? item.actualProduction / dailyTarget : 0;
+          const scrapRate = item.actualProduction > 0 ? item.scrapQty / item.actualProduction : 0;
+          const gap = dailyTarget - item.actualProduction;
 
-            let status: ProductionData['status'] = 'red';
-            if (scrapRate > 0.05) {
-                status = 'critical';
-            } else if (progress >= 1 && scrapRate <= 0.02) {
-                status = 'green';
-            } else if (progress >= 0.8 && progress < 1) {
-                status = 'orange';
-            }
+          let status: ProductionData['status'] = 'red';
+          if (scrapRate > 0.05) {
+            status = 'critical';
+          } else if (progress >= 1 && scrapRate <= 0.02) {
+            status = 'green';
+          } else if (progress >= 0.8) {
+            status = 'orange';
+          }
 
-            return { ...data, progress, scrapRate, gap, status };
+          return {
+            ...item,
+            target: dailyTarget,
+            weeklyTarget,
+            progress,
+            gap,
+            scrapRate,
+            status,
+          };
         });
-        
-        if (parsedData.length === 0) {
-             return resolve({ error: `Aucune donnée trouvée dans le fichier ${file.name}.` });
-        }
 
-        // Parse Sub-sheets for Injection if they exist
         let subComponentsData: SubComponentData[] = [];
+
         if (expectedDepartment === 'Injection') {
-            const subSheets = ['Base', 'Cover', 'Insert'];
-            subSheets.forEach(sheetName => {
-                if (workbook.SheetNames.includes(sheetName)) {
-                    const ws = workbook.Sheets[sheetName];
-                    const rawSubData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
-                    
-                    let subHeaderIdx = -1;
-                    for (let i = 0; i < Math.min(20, rawSubData.length); i++) {
-                        const r = rawSubData[i];
-                        if (r && r.some(c => typeof c === 'string' && c.toLowerCase().includes('date'))) {
-                            subHeaderIdx = i;
-                            break;
-                        }
-                    }
+          const subSheets = ['Base', 'Cover', 'Insert'];
 
-                    if (subHeaderIdx !== -1) {
-                        const subHeaders = rawSubData[subHeaderIdx].map(h => typeof h === 'string' ? h.toLowerCase().trim().replace(/[\r\n]+/g, ' ') : '');
-                        const sDateIdx = subHeaders.findIndex(h => h === 'date' || h.startsWith('date'));
-                        const sProdIdx = subHeaders.findIndex(h => h.includes('produced') || h.includes('total prod') || h.includes('production'));
-                        const sConformIdx = subHeaders.findIndex(h => h.includes('conforme') || h.includes('conform') || h.includes('ok') || h.includes('bon'));
-                        const sScrapIdx = subHeaders.findIndex(h => h.includes('scrap') || h.includes('scrab') || h.includes('rebut') || h.includes('dechet'));
-                        const sTargetIdx = subHeaders.findIndex(h => h.includes('target') || h.includes('objectif') || h.includes('cible'));
+          subSheets.forEach((sheetName) => {
+            if (!workbook.SheetNames.includes(sheetName)) {
+              return;
+            }
 
-                        if (sDateIdx !== -1 && sProdIdx !== -1) {
-                            const subAgg: Record<string, SubComponentData> = {};
+            const worksheet = workbook.Sheets[sheetName];
+            const rawSubData: unknown[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-                            let emptyConsecutiveSub = 0;
-                            for (let i = subHeaderIdx + 1; i < rawSubData.length; i++) {
-                                const r = rawSubData[i];
-                                if (!r || r.length === 0 || !r[sDateIdx]) {
-                                    emptyConsecutiveSub++;
-                                    if (emptyConsecutiveSub > 100) {
-                                        break; // stop parsing after 100 consecutive empty rows
-                                    }
-                                    continue;
-                                }
-                                emptyConsecutiveSub = 0; // reset
+            let subHeaderIdx = -1;
+            for (let i = 0; i < Math.min(20, rawSubData.length); i += 1) {
+              const row = rawSubData[i];
+              if (row && row.some((cell) => typeof cell === 'string' && cell.toLowerCase().includes('date'))) {
+                subHeaderIdx = i;
+                break;
+              }
+            }
 
-                                const dateVal = r[sDateIdx];
-                                const formattedDate = parseExcelDate(dateVal);
+            if (subHeaderIdx === -1) {
+              return;
+            }
 
-                                let actualProduction = cleanNumber(r[sProdIdx]);
-                                const conformQty = cleanNumber(r[sConformIdx]);
-                                const scrapQty = cleanNumber(r[sScrapIdx]);
-                                
-                                // Determine the sub-target
-                                let defaultSubTarget = Math.round(manualTarget / 3);
-                                if (subTargets) {
-                                  if (sheetName.toLowerCase() === 'base') defaultSubTarget = subTargets.base;
-                                  else if (sheetName.toLowerCase() === 'cover') defaultSubTarget = subTargets.cover;
-                                  else if (sheetName.toLowerCase() === 'insert') defaultSubTarget = subTargets.insert;
-                                }
-                                
-                                const rowSubTarget = sTargetIdx !== -1 && r[sTargetIdx] !== undefined && r[sTargetIdx] !== null && String(r[sTargetIdx]).trim() !== ''
-                                    ? cleanNumber(r[sTargetIdx])
-                                    : defaultSubTarget;
+            const subHeaders = rawSubData[subHeaderIdx].map((header) =>
+              typeof header === 'string' ? header.toLowerCase().trim().replace(/[\r\n]+/g, ' ') : ''
+            );
 
-                                if (actualProduction === 0 && conformQty === 0 && scrapQty === 0) {
-                                    continue;
-                                }
+            const sDateIdx = subHeaders.findIndex((header) => header === 'date' || header.startsWith('date'));
+            const sProdIdx = subHeaders.findIndex(
+              (header) => header.includes('produced') || header.includes('total prod') || header.includes('production')
+            );
+            const sConformIdx = subHeaders.findIndex(
+              (header) => header.includes('conforme') || header.includes('conform') || header.includes('ok') || header.includes('bon')
+            );
+            const sScrapIdx = subHeaders.findIndex(
+              (header) => header.includes('scrap') || header.includes('scrab') || header.includes('rebut') || header.includes('dechet')
+            );
+            const sTargetIdx = subHeaders.findIndex(
+              (header) => header.includes('target') || header.includes('objectif') || header.includes('cible')
+            );
 
-                                if (conformQty > actualProduction) {
-                                    actualProduction = conformQty + scrapQty;
-                                }
+            if (sDateIdx === -1 || sProdIdx === -1) {
+              return;
+            }
 
-                                if (!subAgg[formattedDate]) {
-                                    subAgg[formattedDate] = {
-                                        component: sheetName,
-                                        date: formattedDate,
-                                        target: rowSubTarget,
-                                        actualProduction: 0,
-                                        conformQty: 0,
-                                        scrapQty: 0,
-                                        progress: 0,
-                                        gap: 0,
-                                        scrapRate: 0,
-                                        status: 'red'
-                                    };
-                                }
+            const subAggregatedByDate: Record<string, ParsedSubAccumulator> = {};
+            const subWeeklyDateTargets: Record<string, Record<string, number>> = {};
+            let emptyConsecutiveSub = 0;
 
-                                subAgg[formattedDate].actualProduction += actualProduction;
-                                subAgg[formattedDate].conformQty += conformQty;
-                                subAgg[formattedDate].scrapQty += scrapQty;
-                            }
+            for (let i = subHeaderIdx + 1; i < rawSubData.length; i += 1) {
+              const row = rawSubData[i];
 
-                            Object.values(subAgg).forEach(item => {
-                                let progress = 0;
-                                if (item.target > 0) {
-                                    progress = item.actualProduction / item.target;
-                                }
-                                let scrapRate = 0;
-                                if (item.actualProduction > 0) {
-                                    scrapRate = item.scrapQty / item.actualProduction;
-                                }
-                                const gap = item.target - item.actualProduction;
-                                item.progress = progress;
-                                item.scrapRate = scrapRate;
-                                item.gap = gap;
-                                item.status = scrapRate > 0.05 ? 'critical' : progress >= 1 ? 'green' : 'orange';
-                                subComponentsData.push(item);
-                            });
-                        }
-                    }
+              if (!row || row.length === 0 || !row[sDateIdx]) {
+                emptyConsecutiveSub += 1;
+                if (emptyConsecutiveSub > 100) break;
+                continue;
+              }
+
+              emptyConsecutiveSub = 0;
+
+              const formattedDate = parseExcelDate(row[sDateIdx]);
+              const { weekKey } = getWeekMetadata(formattedDate);
+              let actualProduction = cleanNumber(row[sProdIdx]);
+              const conformQty = cleanNumber(row[sConformIdx]);
+              const scrapQty = cleanNumber(row[sScrapIdx]);
+
+              let defaultWeeklySubTarget = Math.round(manualWeeklyTarget / 3);
+              if (subTargets) {
+                if (sheetName.toLowerCase() === 'base') defaultWeeklySubTarget = subTargets.base;
+                if (sheetName.toLowerCase() === 'cover') defaultWeeklySubTarget = subTargets.cover;
+                if (sheetName.toLowerCase() === 'insert') defaultWeeklySubTarget = subTargets.insert;
+              }
+
+              const rowDailyTarget =
+                sTargetIdx !== -1 && row[sTargetIdx] !== undefined && row[sTargetIdx] !== null && String(row[sTargetIdx]).trim() !== ''
+                  ? cleanNumber(row[sTargetIdx])
+                  : 0;
+
+              if (actualProduction === 0 && conformQty === 0 && scrapQty === 0) {
+                continue;
+              }
+
+              if (conformQty > actualProduction) {
+                actualProduction = conformQty + scrapQty;
+              }
+
+              if (!subAggregatedByDate[formattedDate]) {
+                subAggregatedByDate[formattedDate] = {
+                  component: sheetName,
+                  date: formattedDate,
+                  weekKey,
+                  target: 0,
+                  weeklyTarget: 0,
+                  actualProduction: 0,
+                  conformQty: 0,
+                  scrapQty: 0,
+                  progress: 0,
+                  gap: 0,
+                  scrapRate: 0,
+                  status: 'red',
+                };
+              }
+
+              if (rowDailyTarget > 0) {
+                if (!subWeeklyDateTargets[weekKey]) {
+                  subWeeklyDateTargets[weekKey] = {};
                 }
+
+                if (subWeeklyDateTargets[weekKey][formattedDate] === undefined) {
+                  subWeeklyDateTargets[weekKey][formattedDate] = rowDailyTarget;
+                  subAggregatedByDate[formattedDate].target = rowDailyTarget;
+                }
+              }
+
+              subAggregatedByDate[formattedDate].actualProduction += actualProduction;
+              subAggregatedByDate[formattedDate].conformQty += conformQty;
+              subAggregatedByDate[formattedDate].scrapQty += scrapQty;
+              subAggregatedByDate[formattedDate].weeklyTarget = defaultWeeklySubTarget;
+            }
+
+            const subItems = Object.values(subAggregatedByDate);
+            const subWeeklyTargetsFromSheet = buildWeeklyTargetsMap(subWeeklyDateTargets);
+            const subObservedDaysByWeek = buildObservedDaysMap(subItems);
+
+            subItems.forEach((item) => {
+              const observedDays = subObservedDaysByWeek[item.weekKey] || 1;
+              const fallbackWeeklyTarget = item.weeklyTarget;
+              const weeklyTarget =
+                subWeeklyTargetsFromSheet[item.weekKey] > 0 ? subWeeklyTargetsFromSheet[item.weekKey] : fallbackWeeklyTarget;
+              const dailyTarget = item.target > 0 ? item.target : weeklyTarget / observedDays;
+              const progress = dailyTarget > 0 ? item.actualProduction / dailyTarget : 0;
+              const scrapRate = item.actualProduction > 0 ? item.scrapQty / item.actualProduction : 0;
+              const gap = dailyTarget - item.actualProduction;
+
+              item.target = dailyTarget;
+              item.weeklyTarget = weeklyTarget;
+              item.progress = progress;
+              item.scrapRate = scrapRate;
+              item.gap = gap;
+              item.status = scrapRate > 0.05 ? 'critical' : progress >= 1 ? 'green' : progress >= 0.8 ? 'orange' : 'red';
             });
+
+            subComponentsData = [...subComponentsData, ...subItems];
+          });
         }
 
         resolve({ data: parsedData, warnings: Array.from(warningSet), subComponentsData });
-      } catch (err) {
-        resolve({ error: `Erreur inattendue.` });
+      } catch {
+        resolve({ error: 'Erreur inattendue.' });
       }
     };
+
     reader.onerror = () => resolve({ error: 'Erreur de lecture' });
     reader.readAsBinaryString(file);
   });

@@ -1,12 +1,35 @@
 import React from 'react';
-import { ProductionData, SubComponentData } from '@/store/useStore';
+import { ProductionData, SubComponentData, useStore } from '@/store/useStore';
+import { buildWeeklyTargetOverrideKey, sumWeeklyTargets } from '@/lib/weeklyMetrics';
 
 interface PerformanceTableProps {
   data: ProductionData[];
   subComponentsData: SubComponentData[];
 }
 
+type AggregatedRow = {
+  department: string;
+  items: Array<ProductionData | SubComponentData>;
+  actualProduction: number;
+  conformQty: number;
+  scrapQty: number;
+};
+
+type TableRow = {
+  department: string;
+  target: number;
+  actualProduction: number;
+  conformQty: number;
+  scrapQty: number;
+  progress: number;
+  scrapRate: number;
+  gap: number;
+  status: string;
+};
+
 export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, subComponentsData }) => {
+  const weeklyTargets = useStore((state) => state.weeklyTargets);
+
   if (!data || data.length === 0) {
     return (
       <div className="bg-white/80 backdrop-blur-md border border-slate-100 rounded-2xl p-12 text-center text-slate-500 shadow-xl max-w-lg mx-auto">
@@ -26,66 +49,66 @@ export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, subCom
   // since we will display its 3 components instead.
   const filteredData = data.filter(d => d.department !== 'Injection');
 
-  const aggregatedData = filteredData.reduce((acc, curr) => {
+  const aggregatedData = filteredData.reduce<Record<string, AggregatedRow>>((acc, curr) => {
     if (!acc[curr.department]) {
       acc[curr.department] = {
         department: curr.department,
-        target: 0,
+        items: [] as ProductionData[],
         actualProduction: 0,
         conformQty: 0,
         scrapQty: 0,
       };
     }
-    acc[curr.department].target += curr.target;
+    acc[curr.department].items.push(curr);
     acc[curr.department].actualProduction += curr.actualProduction;
     acc[curr.department].conformQty += curr.conformQty;
     acc[curr.department].scrapQty += curr.scrapQty;
     return acc;
-  }, {} as Record<string, any>);
+  }, {});
 
   // Add sub-components of Injection
   if (subComponentsData && subComponentsData.length > 0) {
-    const subAggregated = subComponentsData.reduce((acc, curr) => {
+    const subAggregated = subComponentsData.reduce<Record<string, AggregatedRow>>((acc, curr) => {
       // Standardize sheet component names to Base, Cover, Insert
       const compName = curr.component.charAt(0).toUpperCase() + curr.component.slice(1).toLowerCase().trim();
       const displayName = `Injection (${compName})`;
       if (!acc[displayName]) {
         acc[displayName] = {
           department: displayName,
-          target: 0,
+          items: [] as SubComponentData[],
           actualProduction: 0,
           conformQty: 0,
           scrapQty: 0,
         };
       }
-      acc[displayName].target += curr.target;
+      acc[displayName].items.push(curr);
       acc[displayName].actualProduction += curr.actualProduction;
       acc[displayName].conformQty += curr.conformQty;
       acc[displayName].scrapQty += curr.scrapQty;
       return acc;
-    }, {} as Record<string, any>);
+    }, {});
 
     Object.assign(aggregatedData, subAggregated);
   } else {
     // Fallback: if no subComponentsData is loaded, keep the aggregated Injection department!
     const injectionData = data.filter(d => d.department === 'Injection');
     if (injectionData.length > 0) {
-      const injAgg = injectionData.reduce((acc, curr) => {
+      const injAgg = injectionData.reduce<Record<string, AggregatedRow>>((acc, curr) => {
         if (!acc['Injection']) {
           acc['Injection'] = {
             department: 'Injection',
-            target: 0,
+            items: [] as ProductionData[],
             actualProduction: 0,
             conformQty: 0,
             scrapQty: 0,
           };
         }
-        acc['Injection'].target += curr.target;
+        acc['Injection'].items.push(curr);
         acc['Injection'].actualProduction += curr.actualProduction;
         acc['Injection'].conformQty += curr.conformQty;
         acc['Injection'].scrapQty += curr.scrapQty;
         return acc;
-      }, {} as Record<string, any>);
+      }, {});
       Object.assign(aggregatedData, injAgg);
     }
   }
@@ -102,18 +125,26 @@ export const PerformanceTable: React.FC<PerformanceTableProps> = ({ data, subCom
     'Packaging'
   ];
 
-  let tableData = Object.values(aggregatedData).map((dept: any) => {
+  const getItemWeeklyTarget = (item: ProductionData | SubComponentData) => {
+    if ('component' in item) {
+      return weeklyTargets[buildWeeklyTargetOverrideKey('component', item.component, item.weekKey)] ?? item.weeklyTarget;
+    }
+    return weeklyTargets[buildWeeklyTargetOverrideKey('department', item.department, item.weekKey)] ?? item.weeklyTarget;
+  };
+
+  const tableData: TableRow[] = Object.values(aggregatedData).map((dept) => {
+    const target = sumWeeklyTargets(dept.items, () => dept.department, getItemWeeklyTarget);
     // Corrected to Conform Qty / Target for consistency
-    const progress = dept.target > 0 ? dept.conformQty / dept.target : 0;
+    const progress = target > 0 ? dept.conformQty / target : 0;
     const scrapRate = dept.actualProduction > 0 ? dept.scrapQty / dept.actualProduction : 0;
-    const gap = dept.target - dept.conformQty; // Target vs Conform Qty gap as requested
+    const gap = target - dept.conformQty; // Target vs Conform Qty gap as requested
     
     let status = 'red';
     if (scrapRate > 0.05) status = 'critical';
     else if (progress >= 1 && scrapRate <= 0.02) status = 'green';
     else if (progress >= 0.8 && progress < 1) status = 'orange';
 
-    return { ...dept, progress, scrapRate, gap, status };
+    return { ...dept, target, progress, scrapRate, gap, status };
   });
 
   // Sort according to deptOrder

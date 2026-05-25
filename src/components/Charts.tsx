@@ -2,18 +2,34 @@
 import React from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell, ComposedChart
+  LineChart, Line, PieChart, Pie, Cell
 } from 'recharts';
 import { ProductionData, useStore } from '@/store/useStore';
+import { buildWeeklyTargetOverrideKey, getWeeklyCumulativeMetrics, sumWeeklyTargets } from '@/lib/weeklyMetrics';
 
 interface ChartsProps {
   data: ProductionData[];
 }
 
-const COLORS = ['#dc2626', '#ef4444', '#f87171', '#fca5a5', '#fee2e2', '#7f1d1d'];
+type DotPayload = {
+  progress: number;
+};
 
-const CustomDot = (props: any) => {
-  const { cx, cy, payload } = props;
+type DotProps = {
+  cx?: number;
+  cy?: number;
+  payload?: DotPayload;
+};
+
+type DepartmentChartItem = {
+  name: string;
+  items: ProductionData[];
+  actual: number;
+  scrap: number;
+  conform: number;
+};
+
+const CustomDot = ({ cx, cy, payload }: DotProps) => {
   if (cx === undefined || cy === undefined || !payload) return null;
   const value = payload.progress;
   let color = '#dc2626'; // Red (< 80%)
@@ -27,8 +43,7 @@ const CustomDot = (props: any) => {
   );
 };
 
-const CustomActiveDot = (props: any) => {
-  const { cx, cy, payload } = props;
+const CustomActiveDot = ({ cx, cy, payload }: DotProps) => {
   if (cx === undefined || cy === undefined || !payload) return null;
   const value = payload.progress;
   let color = '#dc2626'; // Red
@@ -48,9 +63,8 @@ const CustomActiveDot = (props: any) => {
 const SCRAP_COLORS = ['#0ea5e9', '#06b6d4', '#0891b2', '#0284c7', '#0369a1', '#075985', '#0c4a6e'];
 
 export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
-  if (!data || data.length === 0) return null;
-
   const [selectedDept, setSelectedDept] = React.useState<string>('Global');
+  const weeklyTargets = useStore((state) => state.weeklyTargets);
 
   // Extract unique list of departments for the filter dropdown
   const departmentsList = React.useMemo(() => {
@@ -59,53 +73,92 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
   }, [data]);
 
   // Aggregate by department for general charts
-  const deptData = data.reduce((acc, curr) => {
+  const deptData = data.reduce<Record<string, DepartmentChartItem>>((acc, curr) => {
     if (!acc[curr.department]) {
-      acc[curr.department] = { name: curr.department, target: 0, actual: 0, scrap: 0, conform: 0 };
+      acc[curr.department] = { name: curr.department, items: [], actual: 0, scrap: 0, conform: 0 };
     }
-    acc[curr.department].target += curr.target;
+    acc[curr.department].items.push(curr);
     acc[curr.department].actual += curr.actualProduction;
     acc[curr.department].scrap += curr.scrapQty;
     acc[curr.department].conform += curr.conformQty;
     return acc;
-  }, {} as Record<string, any>);
+  }, {});
 
-  const barChartData = Object.values(deptData);
+  const barChartData = Object.values(deptData).map((dept) => ({
+    name: dept.name,
+    target: sumWeeklyTargets(
+      dept.items,
+      () => dept.name,
+      (item) => weeklyTargets[buildWeeklyTargetOverrideKey('department', item.department, item.weekKey)] ?? item.weeklyTarget
+    ),
+    actual: dept.actual,
+    scrap: dept.scrap,
+    conform: dept.conform,
+  }));
 
   // Filter trend data based on selected department
-  const filteredTrendData = React.useMemo(() => {
-    if (selectedDept === 'Global') {
-      return data;
-    }
-    return data.filter(d => d.department === selectedDept);
-  }, [data, selectedDept]);
+  const filteredTrendData = selectedDept === 'Global' ? data : data.filter((item) => item.department === selectedDept);
 
   // Aggregate by day for trend based on the filtered data using conformQty and scrap
-  const dayDataMap = filteredTrendData.reduce((acc, curr) => {
-    const key = curr.date; // use date as key
-    if (!acc[key]) {
-      acc[key] = { date: key, target: 0, conform: 0, scrap: 0 };
-    }
-    acc[key].target += curr.target;
-    acc[key].conform += curr.conformQty;
-    acc[key].scrap += curr.scrapQty;
-    return acc;
-  }, {} as Record<string, any>);
+  const lineChartData = React.useMemo(() => {
+    const uniqueDates = Array.from(new Set(filteredTrendData.map((item) => item.date))).sort();
 
-  const lineChartData = Object.values(dayDataMap)
-    .map((d: any) => ({
-      ...d,
-      progress: d.target > 0 ? (d.conform / d.target) * 100 : 0,
-    }))
-    .sort((a: any, b: any) => a.date.localeCompare(b.date));
+    return uniqueDates.map((date) => {
+      if (selectedDept === 'Global') {
+        const departments = Array.from(
+          new Set(filteredTrendData.filter((item) => item.date === date).map((item) => item.department))
+        );
 
-  // Daily scrap percentage data for department chart
-  const dailyScrapData = Object.values(dayDataMap)
-    .map((d: any) => ({
-      date: d.date,
-      scrapPercent: d.target > 0 ? (d.scrap / d.target) * 100 : 0,
-    }))
-    .sort((a: any, b: any) => a.date.localeCompare(b.date));
+        const weeklySnapshots = departments.map((department) =>
+          getWeeklyCumulativeMetrics(
+            filteredTrendData.filter((item) => item.department === department),
+            date,
+            (item) => weeklyTargets[buildWeeklyTargetOverrideKey('department', item.department, item.weekKey)] ?? item.weeklyTarget
+          )
+        );
+
+        const target = weeklySnapshots.reduce((sum, item) => sum + item.weeklyTarget, 0);
+        const conform = weeklySnapshots.reduce((sum, item) => sum + item.conformQty, 0);
+
+        return {
+          date,
+          target,
+          conform,
+          progress: target > 0 ? (conform / target) * 100 : 0,
+        };
+      }
+
+      const metrics = getWeeklyCumulativeMetrics(
+        filteredTrendData,
+        date,
+        (item) => weeklyTargets[buildWeeklyTargetOverrideKey('department', item.department, item.weekKey)] ?? item.weeklyTarget
+      );
+      return {
+        date,
+        target: metrics.weeklyTarget,
+        conform: metrics.conformQty,
+        progress: metrics.progress * 100,
+      };
+    });
+  }, [filteredTrendData, selectedDept, weeklyTargets]);
+
+  const dailyScrapData = React.useMemo(() => {
+    const dayDataMap = filteredTrendData.reduce((acc, curr) => {
+      if (!acc[curr.date]) {
+        acc[curr.date] = { date: curr.date, actual: 0, scrap: 0 };
+      }
+      acc[curr.date].actual += curr.actualProduction;
+      acc[curr.date].scrap += curr.scrapQty;
+      return acc;
+    }, {} as Record<string, { date: string; actual: number; scrap: number }>);
+
+    return Object.values(dayDataMap)
+      .map((d) => ({
+        date: d.date,
+        scrapPercent: d.actual > 0 ? (d.scrap / d.actual) * 100 : 0,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [filteredTrendData]);
 
   // Calculate total scrap and scrap contribution pie data
   const totalScrapQty = barChartData.reduce((sum, d) => sum + d.scrap, 0);
@@ -125,6 +178,8 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
     percentage: d.actual > 0 ? (d.scrap / d.actual) * 100 : 0,
   }));
 
+  if (!data || data.length === 0) return null;
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
       {/* Target vs Actual */}
@@ -139,7 +194,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={(val) => `${val / 1000}k`} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <RechartsTooltip cursor={{ fill: '#f8fafc' }} formatter={(value: any) => formatNumber(Number(value))} />
+              <RechartsTooltip cursor={{ fill: '#f8fafc' }} formatter={(value: number | string) => formatNumber(Number(value))} />
               <Legend iconType="circle" />
               <Bar dataKey="target" name="Target" fill="#cbd5e1" radius={[4, 4, 0, 0]} maxBarSize={50} />
               <Bar dataKey="actual" name="Actual Prod." fill="#2563eb" radius={[4, 4, 0, 0]} maxBarSize={50} />
@@ -183,7 +238,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={(val) => `${val}%`} domain={[0, 'auto']} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <RechartsTooltip formatter={(value: any) => `${Number(value).toFixed(1)}%`} cursor={{ stroke: '#cbd5e1', strokeWidth: 2, strokeDasharray: '3 3' }} />
+              <RechartsTooltip formatter={(value: number | string) => `${Number(value).toFixed(1)}%`} cursor={{ stroke: '#cbd5e1', strokeWidth: 2, strokeDasharray: '3 3' }} />
               <Legend iconType="circle" />
               <Line 
                 type="linear" 
@@ -245,7 +300,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={(val) => `${val}%`} domain={[0, 'auto']} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <RechartsTooltip formatter={(value: any) => `${Number(value).toFixed(1)}%`} />
+              <RechartsTooltip formatter={(value: number | string) => `${Number(value).toFixed(1)}%`} />
               <Legend iconType="circle" />
               <Line type="linear" dataKey="scrapPercent" name="Scrap %" stroke="#f97316" strokeWidth={3} dot={{}} />
             </LineChart>
@@ -265,7 +320,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
               <XAxis type="number" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} tickFormatter={(val) => `${val.toFixed(1)}%`} />
               <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <RechartsTooltip cursor={{ fill: '#f8fafc' }} formatter={(value: any) => `${Number(value).toFixed(1)}%`} />
+              <RechartsTooltip cursor={{ fill: '#f8fafc' }} formatter={(value: number | string) => `${Number(value).toFixed(1)}%`} />
               <Legend iconType="circle" />
               <Bar dataKey="percentage" name="Scrap %" fill="#f97316" radius={[0, 4, 4, 0]} maxBarSize={30} />
             </BarChart>
@@ -298,7 +353,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
                     <Cell key={`cell-${index}`} fill={SCRAP_COLORS[index % SCRAP_COLORS.length]} />
                   ))}
                 </Pie>
-                <RechartsTooltip formatter={(value: any) => [`${formatNumber(Number(value))} pcs`, 'Scrap Qty']} />
+                <RechartsTooltip formatter={(value: number | string) => [`${formatNumber(Number(value))} pcs`, 'Scrap Qty']} />
               </PieChart>
             </ResponsiveContainer>
           )}

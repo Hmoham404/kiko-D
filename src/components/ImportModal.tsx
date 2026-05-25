@@ -10,12 +10,12 @@ interface ImportModalProps {
 }
 
 const DEPARTMENTS = [
-  { name: 'Injection', defaultTarget: 12500 },
-  { name: 'Soudure', defaultTarget: 4167 },
-  { name: 'Metallisation', defaultTarget: 6700 },
-  { name: 'US serigraphie', defaultTarget: 16700 },
-  { name: 'Assemblage', defaultTarget: 5000 },
-  { name: 'Packaging', defaultTarget: 3333 }
+  { name: 'Injection', defaultTarget: 12500 * 5 },
+  { name: 'Soudure', defaultTarget: 4167 * 5 },
+  { name: 'Metallisation', defaultTarget: 6700 * 5 },
+  { name: 'US serigraphie', defaultTarget: 16700 * 5 },
+  { name: 'Assemblage', defaultTarget: 5000 * 5 },
+  { name: 'Packaging', defaultTarget: 3333 * 5 }
 ];
 
 export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
@@ -24,9 +24,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
     Object.fromEntries(DEPARTMENTS.map(d => [d.name, d.defaultTarget]))
   );
   const [subTargets, setSubTargets] = useState<{ base: number; cover: number; insert: number }>({
-    base: 4167,
-    cover: 4167,
-    insert: 4167
+    base: Math.round((12500 * 5) / 3),
+    cover: Math.round((12500 * 5) / 3),
+    insert: Math.round((12500 * 5) / 3)
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
@@ -64,7 +64,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
     setSuccess(false);
     
     let allData: ProductionData[] = [];
-    let newErrors: string[] = [];
+    const newErrors: string[] = [];
     let allWarnings: string[] = [];
     let allSubComponents: SubComponentData[] = [];
 
@@ -158,7 +158,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
                     {dept.name}
                   </div>
                   <div className="flex flex-col items-start min-w-[120px]">
-                    <label className="text-xs text-gray-500 mb-1">Target Journalier</label>
+                    <label className="text-xs text-gray-500 mb-1">Objectif Hebdomadaire</label>
                     <input
                       type="number"
                       value={targets[dept.name]}
@@ -188,11 +188,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
                 {dept.name === 'Injection' && (
                   <div className="w-full mt-1 p-3 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col gap-2">
                     <span className="text-xs font-semibold text-gray-700">
-                      Objectifs Spécifiques par Composant (Base, Cover, Insert)
+                      Objectifs Hebdomadaires par Composant (Base, Cover, Insert)
                     </span>
                     <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="text-[10px] text-gray-500 block mb-0.5">Target Base</label>
+                        <label className="text-[10px] text-gray-500 block mb-0.5">Obj. hebdo Base</label>
                         <input
                           type="number"
                           value={subTargets.base}
@@ -201,7 +201,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] text-gray-500 block mb-0.5">Target Cover</label>
+                        <label className="text-[10px] text-gray-500 block mb-0.5">Obj. hebdo Cover</label>
                         <input
                           type="number"
                           value={subTargets.cover}
@@ -210,7 +210,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] text-gray-500 block mb-0.5">Target Insert</label>
+                        <label className="text-[10px] text-gray-500 block mb-0.5">Obj. hebdo Insert</label>
                         <input
                           type="number"
                           value={subTargets.insert}

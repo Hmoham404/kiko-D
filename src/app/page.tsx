@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useMemo } from 'react';
-import { Target, TrendingUp, AlertTriangle, Crosshair, Award, AlertCircle, FileSpreadsheet, Trash2, List, Calendar, LayoutGrid, Syringe, Activity } from 'lucide-react';
+import { Target, TrendingUp, AlertTriangle, Crosshair, Award, AlertCircle, FileSpreadsheet, Trash2, List, Calendar, LayoutGrid, Activity } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { ImportModal } from '@/components/ImportModal';
 import { KpiCard } from '@/components/KpiCard';
@@ -10,41 +10,56 @@ import { SubComponentsTable } from '@/components/SubComponentsTable';
 import { DashboardCharts } from '@/components/Charts';
 import { InjectionDayView } from '@/components/InjectionDayView';
 import { GlobalDailyView } from '@/components/GlobalDailyView';
-import { parseExcelFile } from '@/lib/excelParser';
+import { WeeklyTargetsModal } from '@/components/WeeklyTargetsModal';
+import { buildWeeklyTargetOverrideKey, sumWeeklyTargets } from '@/lib/weeklyMetrics';
 
 type TabType = 'daily' | 'summary' | 'subcomponents' | 'injection-day' | 'report-day';
 
 export default function DashboardPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isTargetsModalOpen, setIsTargetsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('daily');
-  const { productionData, subComponentsData, warnings, clearData } = useStore();
+  const { productionData, subComponentsData, warnings, weeklyTargets, clearData } = useStore();
 
   const [showWarnings, setShowWarnings] = useState(true);
   // Calculate Global KPIs
   const kpis = useMemo(() => {
     if (!productionData || productionData.length === 0) return null;
 
-    let totalTarget = 0;
     let totalActual = 0;
+    let totalConform = 0;
     let totalScrap = 0;
     
-    const deptStats: Record<string, { target: number, actual: number, scrap: number }> = {};
+    const deptStats: Record<string, { target: number, actual: number, conform: number, scrap: number }> = {};
+    const totalTarget = sumWeeklyTargets(
+      productionData,
+      (item) => item.department,
+      (item) => weeklyTargets[buildWeeklyTargetOverrideKey('department', item.department, item.weekKey)] ?? item.weeklyTarget
+    );
 
     productionData.forEach(d => {
-      totalTarget += d.target;
       totalActual += d.actualProduction;
+      totalConform += d.conformQty;
       totalScrap += d.scrapQty;
 
       if (!deptStats[d.department]) {
-        deptStats[d.department] = { target: 0, actual: 0, scrap: 0 };
+        deptStats[d.department] = { target: 0, actual: 0, conform: 0, scrap: 0 };
       }
-      deptStats[d.department].target += d.target;
       deptStats[d.department].actual += d.actualProduction;
+      deptStats[d.department].conform += d.conformQty;
       deptStats[d.department].scrap += d.scrapQty;
     });
 
-    const globalGap = totalTarget - totalActual;
-    const globalProgress = totalTarget > 0 ? totalActual / totalTarget : 0;
+    Object.entries(deptStats).forEach(([department]) => {
+      deptStats[department].target = sumWeeklyTargets(
+        productionData.filter((item) => item.department === department),
+        (item) => item.department,
+        (item) => weeklyTargets[buildWeeklyTargetOverrideKey('department', item.department, item.weekKey)] ?? item.weeklyTarget
+      );
+    });
+
+    const globalGap = totalTarget - totalConform;
+    const globalProgress = totalTarget > 0 ? totalConform / totalTarget : 0;
     const globalScrapRate = totalActual > 0 ? totalScrap / totalActual : 0;
 
     let bestDept = '';
@@ -53,7 +68,7 @@ export default function DashboardPage() {
     let highestScrap = -1;
 
     Object.entries(deptStats).forEach(([dept, stats]) => {
-      const progress = stats.target > 0 ? stats.actual / stats.target : 0;
+      const progress = stats.target > 0 ? stats.conform / stats.target : 0;
       const scrapRate = stats.actual > 0 ? stats.scrap / stats.actual : 0;
       
       if (progress > highestProgress || (progress === highestProgress && scrapRate < (deptStats[bestDept]?.scrap / deptStats[bestDept]?.actual || Infinity))) {
@@ -70,6 +85,7 @@ export default function DashboardPage() {
     return {
       totalTarget,
       totalActual,
+      totalConform,
       globalGap,
       globalProgress,
       totalScrap,
@@ -77,11 +93,13 @@ export default function DashboardPage() {
       bestDept,
       criticalDept
     };
-  }, [productionData]);
+  }, [productionData, weeklyTargets]);
 
-  const [mounted, setMounted] = React.useState(false);
+  const [mounted, setMounted] = React.useState(() => useStore.persist.hasHydrated());
   React.useEffect(() => {
-    setMounted(true);
+    return useStore.persist.onFinishHydration(() => {
+      setMounted(true);
+    });
   }, []);
 
   const formatNumber = (num: number) => new Intl.NumberFormat('fr-FR').format(num);
@@ -125,6 +143,15 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex gap-3">
+            {productionData.length > 0 && (
+              <button 
+                onClick={() => setIsTargetsModalOpen(true)}
+                className="flex items-center px-4 py-2 bg-white text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors shadow-sm text-base font-medium"
+              >
+                <Target className="w-4 h-4 mr-2" />
+                Targets Hebdo
+              </button>
+            )}
             {productionData.length > 0 && (
               <button 
                 onClick={clearData}
@@ -200,7 +227,7 @@ export default function DashboardPage() {
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <KpiCard 
-                title="Global Target" 
+                title="Weekly Objective" 
                 value={formatNumber(kpis?.totalTarget || 0)} 
                 icon={Target} 
                 color="gray"
@@ -209,16 +236,16 @@ export default function DashboardPage() {
                 title="Actual Production" 
                 value={formatNumber(kpis?.totalActual || 0)} 
                 icon={TrendingUp} 
-                color={kpis?.totalActual! >= kpis?.totalTarget! ? 'green' : 'red'}
+                color={(kpis?.totalConform ?? 0) >= (kpis?.totalTarget ?? 0) ? 'green' : 'red'}
               />
               <KpiCard 
-                title="Global Gap" 
+                title="Weekly Gap" 
                 value={(kpis?.globalGap || 0) > 0 ? `+${formatNumber(kpis?.globalGap || 0)}` : formatNumber(kpis?.globalGap || 0)} 
                 icon={Crosshair} 
                 color={(kpis?.globalGap || 0) <= 0 ? 'green' : 'red'}
               />
               <KpiCard 
-                title="Global Progress" 
+                title="Weekly Progress" 
                 value={formatPercent(kpis?.globalProgress || 0)} 
                 icon={Target} 
                 color={(kpis?.globalProgress || 0) >= 1 ? 'green' : (kpis?.globalProgress || 0) >= 0.8 ? 'orange' : 'red'}
@@ -369,6 +396,7 @@ export default function DashboardPage() {
       </main>
 
       <ImportModal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} />
+      <WeeklyTargetsModal isOpen={isTargetsModalOpen} onClose={() => setIsTargetsModalOpen(false)} />
       </div>
     </div>
   );
