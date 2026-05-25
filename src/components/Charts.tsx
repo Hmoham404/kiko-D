@@ -173,6 +173,9 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
   }, [barChartData, totalScrapQty]);
 
   const formatNumber = (value: number) => new Intl.NumberFormat('fr-FR').format(value);
+  const formatTooltipNumber = (value: number | string | undefined) => formatNumber(Number(value ?? 0));
+  const formatTooltipPercent = (value: number | string | undefined) => `${Number(value ?? 0).toFixed(1)}%`;
+  const formatTooltipScrapQty = (value: number | string | undefined) => [`${formatNumber(Number(value ?? 0))} pcs`, 'Scrap Qty'] as const;
   const scrapPercData = barChartData.map(d => ({
     name: d.name,
     percentage: d.actual > 0 ? (d.scrap / d.actual) * 100 : 0,
@@ -194,7 +197,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={(val) => `${val / 1000}k`} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <RechartsTooltip cursor={{ fill: '#f8fafc' }} formatter={(value: number | string) => formatNumber(Number(value))} />
+              <RechartsTooltip cursor={{ fill: '#f8fafc' }} formatter={formatTooltipNumber} />
               <Legend iconType="circle" />
               <Bar dataKey="target" name="Target" fill="#cbd5e1" radius={[4, 4, 0, 0]} maxBarSize={50} />
               <Bar dataKey="actual" name="Actual Prod." fill="#2563eb" radius={[4, 4, 0, 0]} maxBarSize={50} />
@@ -238,7 +241,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={(val) => `${val}%`} domain={[0, 'auto']} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <RechartsTooltip formatter={(value: number | string) => `${Number(value).toFixed(1)}%`} cursor={{ stroke: '#cbd5e1', strokeWidth: 2, strokeDasharray: '3 3' }} />
+              <RechartsTooltip formatter={formatTooltipPercent} cursor={{ stroke: '#cbd5e1', strokeWidth: 2, strokeDasharray: '3 3' }} />
               <Legend iconType="circle" />
               <Line 
                 type="linear" 
@@ -300,7 +303,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={(val) => `${val}%`} domain={[0, 'auto']} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <RechartsTooltip formatter={(value: number | string) => `${Number(value).toFixed(1)}%`} />
+              <RechartsTooltip formatter={formatTooltipPercent} />
               <Legend iconType="circle" />
               <Line type="linear" dataKey="scrapPercent" name="Scrap %" stroke="#f97316" strokeWidth={3} dot={{}} />
             </LineChart>
@@ -320,7 +323,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
               <XAxis type="number" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} tickFormatter={(val) => `${val.toFixed(1)}%`} />
               <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <RechartsTooltip cursor={{ fill: '#f8fafc' }} formatter={(value: number | string) => `${Number(value).toFixed(1)}%`} />
+              <RechartsTooltip cursor={{ fill: '#f8fafc' }} formatter={formatTooltipPercent} />
               <Legend iconType="circle" />
               <Bar dataKey="percentage" name="Scrap %" fill="#f97316" radius={[0, 4, 4, 0]} maxBarSize={30} />
             </BarChart>
@@ -353,7 +356,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
                     <Cell key={`cell-${index}`} fill={SCRAP_COLORS[index % SCRAP_COLORS.length]} />
                   ))}
                 </Pie>
-                <RechartsTooltip formatter={(value: number | string) => [`${formatNumber(Number(value))} pcs`, 'Scrap Qty']} />
+                <RechartsTooltip formatter={formatTooltipScrapQty} />
               </PieChart>
             </ResponsiveContainer>
           )}
