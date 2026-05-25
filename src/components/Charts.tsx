@@ -173,9 +173,15 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
   }, [barChartData, totalScrapQty]);
 
   const formatNumber = (value: number) => new Intl.NumberFormat('fr-FR').format(value);
-  const formatTooltipNumber = (value: number | string | undefined) => formatNumber(Number(value ?? 0));
-  const formatTooltipPercent = (value: number | string | undefined) => `${Number(value ?? 0).toFixed(1)}%`;
-  const formatTooltipScrapQty = (value: number | string | undefined) => [`${formatNumber(Number(value ?? 0))} pcs`, 'Scrap Qty'] as const;
+  const getTooltipNumericValue = (value: unknown) => {
+    if (Array.isArray(value)) {
+      return Number(value[0] ?? 0);
+    }
+    return Number(value ?? 0);
+  };
+  const formatTooltipNumber = (value: unknown) => formatNumber(getTooltipNumericValue(value));
+  const formatTooltipPercent = (value: unknown) => `${getTooltipNumericValue(value).toFixed(1)}%`;
+  const formatTooltipScrapQty = (value: unknown) => [`${formatNumber(getTooltipNumericValue(value))} pcs`, 'Scrap Qty'] as const;
   const scrapPercData = barChartData.map(d => ({
     name: d.name,
     percentage: d.actual > 0 ? (d.scrap / d.actual) * 100 : 0,
