@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import type { StateStorage } from 'zustand/middleware';
 
 export interface ProductionData {
   department: string;
@@ -46,6 +47,12 @@ interface AppState {
   removeWarning: (warning: string) => void;
   clearData: () => void;
 }
+
+const noopStorage: StateStorage = {
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+};
 
 export const useStore = create<AppState>()(
   persist(
@@ -112,7 +119,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'kiko-dashboard-storage-v2',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => (typeof window === 'undefined' ? noopStorage : localStorage)),
     }
   )
 );

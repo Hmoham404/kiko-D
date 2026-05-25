@@ -192,13 +192,13 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
       {/* Target vs Actual */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+      <div className="min-w-0 bg-white p-6 rounded-lg shadow-sm border border-gray-100">
         <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
           <span className="w-2 h-6 bg-slate-700 rounded-sm mr-2"></span>
           Target vs Actual Production
         </h3>
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-80 min-w-0">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <BarChart data={barChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
@@ -213,7 +213,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
       </div>
 
       {/* Progress Trend with filter dropdown */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 relative">
+      <div className="min-w-0 bg-white p-6 rounded-lg shadow-sm border border-gray-100 relative">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2 border-b border-gray-50 pb-2">
             <h3 className="text-lg font-bold text-gray-800 flex items-center">
               <span className="w-2 h-6 bg-slate-700 rounded-sm mr-2"></span>
@@ -234,8 +234,8 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
             </select>
           </div>
         </div>
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-80 min-w-0">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <LineChart data={lineChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
               <defs>
                 <linearGradient id="colorProgress" x1="0" y1="0" x2="0" y2="1">
@@ -262,7 +262,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
           </ResponsiveContainer>
         </div>
       </div>
-        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200/80 shadow-md bg-white/90 backdrop-blur-md p-4 transition-all duration-300 hover:shadow-lg">
+        <div className="min-w-0 mt-4 overflow-x-auto rounded-xl border border-slate-200/80 shadow-md bg-white/90 backdrop-blur-md p-4 transition-all duration-300 hover:shadow-lg">
           <div className="flex items-center space-x-2 mb-3">
             <div className="w-2 h-4 bg-indigo-600 rounded-full animate-pulse"></div>
             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Détails Suivi Journalier (Conform Qty / Target)</h4>
@@ -298,13 +298,13 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
 
 
       {/* Daily Scrap Percentage */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+      <div className="min-w-0 bg-white p-6 rounded-lg shadow-sm border border-gray-100">
         <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
           <span className="w-2 h-6 bg-slate-700 rounded-sm mr-2"></span>
           Daily Scrap Percentage %
         </h3>
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-80 min-w-0">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <LineChart data={dailyScrapData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
@@ -318,13 +318,13 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
       </div>
 
       {/* Scrap per Department */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+      <div className="min-w-0 bg-white p-6 rounded-lg shadow-sm border border-gray-100">
         <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
           <span className="w-2 h-6 bg-slate-700 rounded-sm mr-2"></span>
           Scrap Percentage per Department
         </h3>
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-80 min-w-0">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <BarChart data={scrapPercData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
               <XAxis type="number" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} tickFormatter={(val) => `${val.toFixed(1)}%`} />
@@ -338,16 +338,16 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
       </div>
 
       {/* Scrap Contribution Pie */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+      <div className="min-w-0 bg-white p-6 rounded-lg shadow-sm border border-gray-100">
         <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
           <span className="w-2 h-6 bg-slate-700 rounded-sm mr-2"></span>
           Scrap Contribution % by Department
         </h3>
-        <div className="h-80 flex justify-center items-center">
+        <div className="h-80 min-w-0 flex justify-center items-center">
           {totalScrapQty === 0 ? (
             <div className="text-sm text-gray-500 font-medium">Aucun scrap enregistré</div>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <PieChart>
                 <Pie
                   data={scrapPieData}
