@@ -29,38 +29,59 @@ type DepartmentChartItem = {
   conform: number;
 };
 
+const DASHBOARD_CHART_COLORS = {
+  primary: 'var(--dashboard-primary)',
+  secondary: 'var(--dashboard-secondary)',
+  success: 'var(--dashboard-success)',
+  warning: 'var(--dashboard-warning)',
+  danger: 'var(--dashboard-danger)',
+  neutral: 'var(--dashboard-neutral)',
+  neutralStrong: 'var(--dashboard-neutral-strong)',
+  grid: 'var(--dashboard-grid)',
+  surfaceMuted: 'var(--dashboard-surface-muted)',
+  white: '#ffffff',
+};
+
 const CustomDot = ({ cx, cy, payload }: DotProps) => {
   if (cx === undefined || cy === undefined || !payload) return null;
   const value = payload.progress;
-  let color = '#dc2626'; // Red (< 80%)
+  let color = DASHBOARD_CHART_COLORS.danger;
   if (value >= 100) {
-    color = '#16a34a'; // Green (>= 100%)
+    color = DASHBOARD_CHART_COLORS.success;
   } else if (value >= 80) {
-    color = '#f97316'; // Orange (80% - 100%)
+    color = DASHBOARD_CHART_COLORS.warning;
   }
   return (
-    <circle cx={cx} cy={cy} r={4.5} fill={color} stroke="#fff" strokeWidth={1.5} />
+    <circle cx={cx} cy={cy} r={4.5} fill={color} stroke={DASHBOARD_CHART_COLORS.white} strokeWidth={1.5} />
   );
 };
 
 const CustomActiveDot = ({ cx, cy, payload }: DotProps) => {
   if (cx === undefined || cy === undefined || !payload) return null;
   const value = payload.progress;
-  let color = '#dc2626'; // Red
+  let color = DASHBOARD_CHART_COLORS.danger;
   if (value >= 100) {
-    color = '#16a34a'; // Green
+    color = DASHBOARD_CHART_COLORS.success;
   } else if (value >= 80) {
-    color = '#f97316'; // Orange
+    color = DASHBOARD_CHART_COLORS.warning;
   }
   return (
     <g>
       <circle cx={cx} cy={cy} r={8} fill={color} opacity={0.3} />
-      <circle cx={cx} cy={cy} r={5} fill={color} stroke="#fff" strokeWidth={1.5} />
+      <circle cx={cx} cy={cy} r={5} fill={color} stroke={DASHBOARD_CHART_COLORS.white} strokeWidth={1.5} />
     </g>
   );
 };
 
-const SCRAP_COLORS = ['#0ea5e9', '#06b6d4', '#0891b2', '#0284c7', '#0369a1', '#075985', '#0c4a6e'];
+const SCRAP_COLORS = [
+  'var(--dashboard-primary)',
+  'var(--dashboard-secondary)',
+  'var(--dashboard-success)',
+  'var(--dashboard-warning)',
+  'var(--dashboard-danger)',
+  '#6c7f92',
+  '#8ca0b3',
+];
 
 export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
   const [selectedDept, setSelectedDept] = React.useState<string>('Global');
@@ -194,19 +215,19 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
       {/* Target vs Actual */}
       <div className="min-w-0 bg-white p-6 rounded-lg shadow-sm border border-gray-100">
         <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-          <span className="w-2 h-6 bg-slate-700 rounded-sm mr-2"></span>
+          <span className="mr-2 h-6 w-2 rounded-sm bg-[var(--dashboard-primary)]"></span>
           Target vs Actual Production
         </h3>
         <div className="h-80 min-w-0">
           <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <BarChart data={barChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-              <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={(val) => `${val / 1000}k`} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <RechartsTooltip cursor={{ fill: '#f8fafc' }} formatter={formatTooltipNumber} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={DASHBOARD_CHART_COLORS.grid} />
+              <XAxis dataKey="name" tick={{ fontSize: 12, fill: DASHBOARD_CHART_COLORS.neutralStrong }} axisLine={false} tickLine={false} />
+              <YAxis tickFormatter={(val) => `${val / 1000}k`} tick={{ fontSize: 12, fill: DASHBOARD_CHART_COLORS.neutralStrong }} axisLine={false} tickLine={false} />
+              <RechartsTooltip cursor={{ fill: DASHBOARD_CHART_COLORS.surfaceMuted }} formatter={formatTooltipNumber} />
               <Legend iconType="circle" />
-              <Bar dataKey="target" name="Target" fill="#cbd5e1" radius={[4, 4, 0, 0]} maxBarSize={50} />
-              <Bar dataKey="actual" name="Actual Prod." fill="#2563eb" radius={[4, 4, 0, 0]} maxBarSize={50} />
+              <Bar dataKey="target" name="Target" fill={DASHBOARD_CHART_COLORS.neutral} radius={[4, 4, 0, 0]} maxBarSize={50} />
+              <Bar dataKey="actual" name="Actual Prod." fill={DASHBOARD_CHART_COLORS.primary} radius={[4, 4, 0, 0]} maxBarSize={50} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -216,7 +237,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
       <div className="min-w-0 bg-white p-6 rounded-lg shadow-sm border border-gray-100 relative">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2 border-b border-gray-50 pb-2">
             <h3 className="text-lg font-bold text-gray-800 flex items-center">
-              <span className="w-2 h-6 bg-slate-700 rounded-sm mr-2"></span>
+              <span className="mr-2 h-6 w-2 rounded-sm bg-[var(--dashboard-primary)]"></span>
               Conform Qty Progress % per Day
             </h3>
           <div className="flex items-center space-x-2">
@@ -224,7 +245,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
             <select
               value={selectedDept}
               onChange={(e) => setSelectedDept(e.target.value)}
-              className="text-xs bg-gray-50 border border-gray-200 rounded-md py-1 px-2.5 focus:outline-none focus:ring-1 focus:ring-red-500 font-medium text-gray-700 cursor-pointer shadow-sm hover:bg-gray-100 transition-colors"
+              className="cursor-pointer rounded-md border border-[var(--dashboard-neutral)] bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-[var(--dashboard-primary)]"
             >
               {departmentsList.map(dept => (
                 <option key={dept} value={dept}>
@@ -239,15 +260,15 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
             <LineChart data={lineChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
               <defs>
                 <linearGradient id="colorProgress" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#16a34a" stopOpacity={1} />
-                  <stop offset="40%" stopColor="#f97316" stopOpacity={1} />
-                  <stop offset="95%" stopColor="#dc2626" stopOpacity={1} />
+                  <stop offset="5%" stopColor={DASHBOARD_CHART_COLORS.success} stopOpacity={1} />
+                  <stop offset="40%" stopColor={DASHBOARD_CHART_COLORS.warning} stopOpacity={1} />
+                  <stop offset="95%" stopColor={DASHBOARD_CHART_COLORS.danger} stopOpacity={1} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-              <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={(val) => `${val}%`} domain={[0, 'auto']} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <RechartsTooltip formatter={formatTooltipPercent} cursor={{ stroke: '#cbd5e1', strokeWidth: 2, strokeDasharray: '3 3' }} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={DASHBOARD_CHART_COLORS.grid} />
+              <XAxis dataKey="date" tick={{ fontSize: 12, fill: DASHBOARD_CHART_COLORS.neutralStrong }} axisLine={false} tickLine={false} />
+              <YAxis tickFormatter={(val) => `${val}%`} domain={[0, 'auto']} tick={{ fontSize: 12, fill: DASHBOARD_CHART_COLORS.neutralStrong }} axisLine={false} tickLine={false} />
+              <RechartsTooltip formatter={formatTooltipPercent} cursor={{ stroke: DASHBOARD_CHART_COLORS.neutral, strokeWidth: 2, strokeDasharray: '3 3' }} />
               <Legend iconType="circle" />
               <Line 
                 type="linear" 
@@ -264,7 +285,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
       </div>
         <div className="min-w-0 mt-4 overflow-x-auto rounded-xl border border-slate-200/80 shadow-md bg-white/90 backdrop-blur-md p-4 transition-all duration-300 hover:shadow-lg">
           <div className="flex items-center space-x-2 mb-3">
-            <div className="w-2 h-4 bg-indigo-600 rounded-full animate-pulse"></div>
+            <div className="h-4 w-2 animate-pulse rounded-full bg-[var(--dashboard-secondary)]"></div>
             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Détails Suivi Journalier (Conform Qty / Target)</h4>
           </div>
           <table className="min-w-full text-xs text-left">
@@ -277,9 +298,9 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {lineChartData.map((d, index) => {
-                let progressBg = 'bg-red-50 text-red-700 border-red-100';
-                if (d.progress >= 100) progressBg = 'bg-emerald-50 text-emerald-700 border-emerald-100';
-                else if (d.progress >= 80) progressBg = 'bg-amber-50 text-amber-700 border-amber-100';
+                let progressBg = 'border-[color-mix(in_srgb,var(--dashboard-danger)_18%,white)] bg-[color-mix(in_srgb,var(--dashboard-danger)_12%,white)] text-[var(--dashboard-danger)]';
+                if (d.progress >= 100) progressBg = 'border-[color-mix(in_srgb,var(--dashboard-success)_20%,white)] bg-[color-mix(in_srgb,var(--dashboard-success)_12%,white)] text-[var(--dashboard-success)]';
+                else if (d.progress >= 80) progressBg = 'border-[color-mix(in_srgb,var(--dashboard-warning)_24%,white)] bg-[color-mix(in_srgb,var(--dashboard-warning)_14%,white)] text-[color-mix(in_srgb,var(--dashboard-warning)_78%,black)]';
                 return (
                   <tr key={d.date} className={`transition-colors duration-150 ${index % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/40 hover:bg-slate-50'}`}>
                     <td className="px-4 py-2.5 font-bold text-slate-800">{d.date}</td>
@@ -300,18 +321,18 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
       {/* Daily Scrap Percentage */}
       <div className="min-w-0 bg-white p-6 rounded-lg shadow-sm border border-gray-100">
         <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-          <span className="w-2 h-6 bg-slate-700 rounded-sm mr-2"></span>
+          <span className="mr-2 h-6 w-2 rounded-sm bg-[var(--dashboard-primary)]"></span>
           Daily Scrap Percentage %
         </h3>
         <div className="h-80 min-w-0">
           <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <LineChart data={dailyScrapData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-              <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={(val) => `${val}%`} domain={[0, 'auto']} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={DASHBOARD_CHART_COLORS.grid} />
+              <XAxis dataKey="date" tick={{ fontSize: 12, fill: DASHBOARD_CHART_COLORS.neutralStrong }} axisLine={false} tickLine={false} />
+              <YAxis tickFormatter={(val) => `${val}%`} domain={[0, 'auto']} tick={{ fontSize: 12, fill: DASHBOARD_CHART_COLORS.neutralStrong }} axisLine={false} tickLine={false} />
               <RechartsTooltip formatter={formatTooltipPercent} />
               <Legend iconType="circle" />
-              <Line type="linear" dataKey="scrapPercent" name="Scrap %" stroke="#f97316" strokeWidth={3} dot={{}} />
+              <Line type="linear" dataKey="scrapPercent" name="Scrap %" stroke={DASHBOARD_CHART_COLORS.warning} strokeWidth={3} dot={{}} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -320,18 +341,18 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
       {/* Scrap per Department */}
       <div className="min-w-0 bg-white p-6 rounded-lg shadow-sm border border-gray-100">
         <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-          <span className="w-2 h-6 bg-slate-700 rounded-sm mr-2"></span>
+          <span className="mr-2 h-6 w-2 rounded-sm bg-[var(--dashboard-primary)]"></span>
           Scrap Percentage per Department
         </h3>
         <div className="h-80 min-w-0">
           <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <BarChart data={scrapPercData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
-              <XAxis type="number" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} tickFormatter={(val) => `${val.toFixed(1)}%`} />
-              <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <RechartsTooltip cursor={{ fill: '#f8fafc' }} formatter={formatTooltipPercent} />
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={DASHBOARD_CHART_COLORS.grid} />
+              <XAxis type="number" tick={{ fontSize: 12, fill: DASHBOARD_CHART_COLORS.neutralStrong }} axisLine={false} tickLine={false} tickFormatter={(val) => `${val.toFixed(1)}%`} />
+              <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 12, fill: DASHBOARD_CHART_COLORS.neutralStrong }} axisLine={false} tickLine={false} />
+              <RechartsTooltip cursor={{ fill: DASHBOARD_CHART_COLORS.surfaceMuted }} formatter={formatTooltipPercent} />
               <Legend iconType="circle" />
-              <Bar dataKey="percentage" name="Scrap %" fill="#f97316" radius={[0, 4, 4, 0]} maxBarSize={30} />
+              <Bar dataKey="percentage" name="Scrap %" fill={DASHBOARD_CHART_COLORS.warning} radius={[0, 4, 4, 0]} maxBarSize={30} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -340,7 +361,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ data }) => {
       {/* Scrap Contribution Pie */}
       <div className="min-w-0 bg-white p-6 rounded-lg shadow-sm border border-gray-100">
         <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-          <span className="w-2 h-6 bg-slate-700 rounded-sm mr-2"></span>
+          <span className="mr-2 h-6 w-2 rounded-sm bg-[var(--dashboard-primary)]"></span>
           Scrap Contribution % by Department
         </h3>
         <div className="h-80 min-w-0 flex justify-center items-center">

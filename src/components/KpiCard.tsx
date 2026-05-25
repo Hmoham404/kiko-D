@@ -14,41 +14,41 @@ export const KpiCard: React.FC<KpiCardProps> = ({ title, value, icon: Icon, tren
   // Premium Theme Config mapping
   const themes = {
     red: {
-      border: 'border-l-4 border-red-500 hover:border-red-600',
-      iconBg: 'bg-red-50 text-red-600 border border-red-100 shadow-sm shadow-red-50',
-      textValue: 'text-red-600',
-      glow: 'hover:shadow-red-500/10'
+      border: 'border-l-4 border-[var(--dashboard-danger)] hover:border-[var(--dashboard-danger-strong)]',
+      iconBg: 'border border-[color-mix(in_srgb,var(--dashboard-danger)_18%,white)] bg-[color-mix(in_srgb,var(--dashboard-danger)_10%,white)] text-[var(--dashboard-danger)] shadow-sm',
+      textValue: 'text-[var(--dashboard-danger)]',
+      glow: 'hover:ring-1 hover:ring-[color-mix(in_srgb,var(--dashboard-danger)_18%,white)]'
     },
     green: {
-      border: 'border-l-4 border-emerald-500 hover:border-emerald-600',
-      iconBg: 'bg-emerald-50 text-emerald-600 border border-emerald-100 shadow-sm shadow-emerald-50',
-      textValue: 'text-emerald-600',
-      glow: 'hover:shadow-emerald-500/10'
+      border: 'border-l-4 border-[var(--dashboard-success)] hover:border-[color-mix(in_srgb,var(--dashboard-success)_84%,black)]',
+      iconBg: 'border border-[color-mix(in_srgb,var(--dashboard-success)_18%,white)] bg-[color-mix(in_srgb,var(--dashboard-success)_10%,white)] text-[var(--dashboard-success)] shadow-sm',
+      textValue: 'text-[var(--dashboard-success)]',
+      glow: 'hover:ring-1 hover:ring-[color-mix(in_srgb,var(--dashboard-success)_18%,white)]'
     },
     orange: {
-      border: 'border-l-4 border-amber-500 hover:border-amber-600',
-      iconBg: 'bg-amber-50 text-amber-600 border border-amber-100 shadow-sm shadow-amber-50',
-      textValue: 'text-amber-600',
-      glow: 'hover:shadow-amber-500/10'
+      border: 'border-l-4 border-[var(--dashboard-warning)] hover:border-[color-mix(in_srgb,var(--dashboard-warning)_84%,black)]',
+      iconBg: 'border border-[color-mix(in_srgb,var(--dashboard-warning)_24%,white)] bg-[color-mix(in_srgb,var(--dashboard-warning)_14%,white)] text-[color-mix(in_srgb,var(--dashboard-warning)_78%,black)] shadow-sm',
+      textValue: 'text-[color-mix(in_srgb,var(--dashboard-warning)_78%,black)]',
+      glow: 'hover:ring-1 hover:ring-[color-mix(in_srgb,var(--dashboard-warning)_22%,white)]'
     },
     gray: {
-      border: 'border-l-4 border-slate-600 hover:border-slate-700',
-      iconBg: 'bg-slate-50 text-slate-600 border border-slate-200/80 shadow-sm shadow-slate-100',
-      textValue: 'text-slate-800',
-      glow: 'hover:shadow-slate-500/10'
+      border: 'border-l-4 border-[var(--dashboard-secondary)] hover:border-[var(--dashboard-primary)]',
+      iconBg: 'border border-[var(--dashboard-neutral)] bg-[var(--dashboard-surface-muted)] text-[var(--dashboard-secondary)] shadow-sm shadow-slate-100',
+      textValue: 'text-[var(--dashboard-primary)]',
+      glow: 'hover:ring-1 hover:ring-[color-mix(in_srgb,var(--dashboard-secondary)_16%,white)]'
     }
   };
 
   const currentTheme = themes[color] || themes.red;
 
   return (
-    <div className={`bg-white/95 backdrop-blur-md rounded-2xl shadow-md p-6 ${currentTheme.border} ${currentTheme.glow} transition-all duration-300 hover:-translate-y-1 hover:shadow-xl`}>
+    <div className={`rounded-2xl bg-white/95 p-6 shadow-md backdrop-blur-md ${currentTheme.border} ${currentTheme.glow} transition-all duration-300 hover:-translate-y-1 hover:shadow-xl`}>
       <div className="flex justify-between items-start">
         <div className="flex-1">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">{title}</p>
           <h3 className={`text-2xl font-black tracking-tight ${currentTheme.textValue} font-mono`}>{value}</h3>
           {trend && (
-            <div className={`flex items-center space-x-1 mt-2.5 text-xs font-bold ${trendUp ? 'text-emerald-600' : 'text-red-500'}`}>
+            <div className={`mt-2.5 flex items-center space-x-1 text-xs font-bold ${trendUp ? 'text-[var(--dashboard-success)]' : 'text-[var(--dashboard-danger)]'}`}>
               <span className="text-sm">{trendUp ? '↑' : '↓'}</span>
               <span>{trend}</span>
             </div>

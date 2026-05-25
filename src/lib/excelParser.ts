@@ -3,6 +3,9 @@ import { format } from 'date-fns';
 import { ProductionData, SubComponentData } from '@/store/useStore';
 import { getWeekMetadata } from '@/lib/weeklyMetrics';
 
+const WORKING_DAYS_PER_WEEK = 6;
+const roundUnits = (value: number) => Math.round(value);
+
 const parseExcelDate = (dateVal: unknown): string => {
   if (dateVal instanceof Date) {
     const adjusted = new Date(dateVal.getTime() + 12 * 60 * 60 * 1000);
@@ -53,21 +56,6 @@ const buildWeeklyTargetsMap = (targetsByWeekAndDate: Record<string, Record<strin
       weekKey,
       Object.values(dateTargets).reduce((sum, value) => sum + value, 0),
     ])
-  );
-};
-
-const buildObservedDaysMap = <T extends { weekKey: string; date: string }>(items: T[]) => {
-  const daysByWeek: Record<string, Set<string>> = {};
-
-  items.forEach((item) => {
-    if (!daysByWeek[item.weekKey]) {
-      daysByWeek[item.weekKey] = new Set<string>();
-    }
-    daysByWeek[item.weekKey].add(item.date);
-  });
-
-  return Object.fromEntries(
-    Object.entries(daysByWeek).map(([weekKey, dates]) => [weekKey, dates.size || 1])
   );
 };
 
@@ -221,12 +209,9 @@ export const parseExcelFile = async (
         }
 
         const weeklyTargetsFromSheet = buildWeeklyTargetsMap(weeklyDateTargets);
-        const observedDaysByWeek = buildObservedDaysMap(mainItems);
-
         const parsedData = mainItems.map((item) => {
-          const observedDays = observedDaysByWeek[item.weekKey] || 1;
           const weeklyTarget = weeklyTargetsFromSheet[item.weekKey] > 0 ? weeklyTargetsFromSheet[item.weekKey] : manualWeeklyTarget;
-          const dailyTarget = item.target > 0 ? item.target : weeklyTarget / observedDays;
+          const dailyTarget = weeklyTarget > 0 ? roundUnits(weeklyTarget / WORKING_DAYS_PER_WEEK) : roundUnits(item.target);
           const progress = dailyTarget > 0 ? item.actualProduction / dailyTarget : 0;
           const scrapRate = item.actualProduction > 0 ? item.scrapQty / item.actualProduction : 0;
           const gap = dailyTarget - item.actualProduction;
@@ -376,14 +361,12 @@ export const parseExcelFile = async (
 
             const subItems = Object.values(subAggregatedByDate);
             const subWeeklyTargetsFromSheet = buildWeeklyTargetsMap(subWeeklyDateTargets);
-            const subObservedDaysByWeek = buildObservedDaysMap(subItems);
 
             subItems.forEach((item) => {
-              const observedDays = subObservedDaysByWeek[item.weekKey] || 1;
               const fallbackWeeklyTarget = item.weeklyTarget;
               const weeklyTarget =
                 subWeeklyTargetsFromSheet[item.weekKey] > 0 ? subWeeklyTargetsFromSheet[item.weekKey] : fallbackWeeklyTarget;
-              const dailyTarget = item.target > 0 ? item.target : weeklyTarget / observedDays;
+              const dailyTarget = weeklyTarget > 0 ? roundUnits(weeklyTarget / WORKING_DAYS_PER_WEEK) : roundUnits(item.target);
               const progress = dailyTarget > 0 ? item.actualProduction / dailyTarget : 0;
               const scrapRate = item.actualProduction > 0 ? item.scrapQty / item.actualProduction : 0;
               const gap = dailyTarget - item.actualProduction;

@@ -1,8 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f4f6f8;
+  --foreground: #1f2937;
+  --dashboard-primary: #16324f;
+  --dashboard-primary-strong: #10283f;
+  --dashboard-secondary: #4e6e81;
+  --dashboard-success: #4f7a5a;
+  --dashboard-warning: #c9a66b;
+  --dashboard-danger: #b85c4b;
+  --dashboard-danger-strong: #a44e40;
+  --dashboard-neutral: #d8e0e6;
+  --dashboard-neutral-strong: #8a98a8;
+  --dashboard-surface: #ffffff;
+  --dashboard-surface-muted: #eef2f5;
+  --dashboard-page-overlay: rgba(244, 246, 248, 0.9);
+  --dashboard-grid: #dde5eb;
 }
 
 @theme inline {
@@ -12,19 +25,20 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-image:
+    radial-gradient(circle at top right, rgba(78, 110, 129, 0.1), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(244, 246, 248, 0.94));
+}
+
+::selection {
+  background: color-mix(in srgb, var(--dashboard-primary) 18%, white);
+  color: var(--dashboard-primary-strong);
 }
 
 /* Custom premium thin scrollbar */
@@ -34,16 +48,16 @@ body {
 }
 
 .scrollbar-thin::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.02);
+  background: color-mix(in srgb, var(--dashboard-primary) 4%, white);
   border-radius: 4px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.3);
+  background: color-mix(in srgb, var(--dashboard-secondary) 48%, white);
   border-radius: 4px;
   transition: all 0.2s ease;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.5);
+  background: color-mix(in srgb, var(--dashboard-secondary) 72%, white);
 }
