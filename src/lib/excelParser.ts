@@ -50,6 +50,21 @@ const cleanNumber = (val: unknown): number => {
   return Number.isNaN(num) ? 0 : num;
 };
 
+const mergeTextField = (currentValue: string | undefined, nextValue: unknown) => {
+  const normalized = String(nextValue ?? '').trim();
+  if (!normalized) return currentValue;
+  if (!currentValue) return normalized;
+
+  const values = new Set(
+    currentValue
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+  );
+  values.add(normalized);
+  return Array.from(values).join(', ');
+};
+
 const buildWeeklyTargetsMap = (targetsByWeekAndDate: Record<string, Record<string, number>>) => {
   return Object.fromEntries(
     Object.entries(targetsByWeekAndDate).map(([weekKey, dateTargets]) => [
@@ -121,6 +136,19 @@ export const parseExcelFile = async (
         const targetIdx = headers.findIndex(
           (header) => header.includes('target') || header.includes('objectif') || header.includes('cible')
         );
+        const shiftIdx = headers.findIndex((header) => header.includes('shift') || header.includes('equipe'));
+        const partNumberIdx = headers.findIndex(
+          (header) =>
+            header.includes('part number') ||
+            header.includes('partnumber') ||
+            header.includes('part no') ||
+            header.includes('reference') ||
+            header === 'ref'
+        );
+        const machineIdx = headers.findIndex((header) => header.includes('machine') || header.includes('mach'));
+        const unitIdx = headers.findIndex(
+          (header) => header.includes('unit of prod') || header.includes('prod unit') || header.includes('unite')
+        );
 
         if (dateIdx === -1 || prodIdx === -1) {
           resolve({ error: `Colonnes Date ou Production manquantes dans ${file.name}.` });
@@ -169,6 +197,10 @@ export const parseExcelFile = async (
               date: formattedDate,
               week: weekLabel,
               weekKey,
+              shift: undefined,
+              partNumber: undefined,
+              machine: undefined,
+              unitOfProduction: undefined,
               target: 0,
               weeklyTarget: 0,
               actualProduction: 0,
@@ -196,6 +228,17 @@ export const parseExcelFile = async (
               aggregatedByDate[formattedDate].target = rowDailyTarget;
             }
           }
+
+          aggregatedByDate[formattedDate].shift = mergeTextField(aggregatedByDate[formattedDate].shift, row[shiftIdx]);
+          aggregatedByDate[formattedDate].partNumber = mergeTextField(
+            aggregatedByDate[formattedDate].partNumber,
+            row[partNumberIdx]
+          );
+          aggregatedByDate[formattedDate].machine = mergeTextField(aggregatedByDate[formattedDate].machine, row[machineIdx]);
+          aggregatedByDate[formattedDate].unitOfProduction = mergeTextField(
+            aggregatedByDate[formattedDate].unitOfProduction,
+            row[unitIdx]
+          );
 
           aggregatedByDate[formattedDate].actualProduction += actualProduction;
           aggregatedByDate[formattedDate].conformQty += conformQty;
@@ -279,6 +322,21 @@ export const parseExcelFile = async (
             const sTargetIdx = subHeaders.findIndex(
               (header) => header.includes('target') || header.includes('objectif') || header.includes('cible')
             );
+            const sMachineIdx = subHeaders.findIndex((header) => header.includes('machine') || header.includes('mach'));
+            const sReferenceIdx = subHeaders.findIndex(
+              (header) =>
+                header.includes('part number') ||
+                header.includes('partnumber') ||
+                header.includes('part no') ||
+                header.includes('reference') ||
+                header === 'ref'
+            );
+            const sUnitIdx = subHeaders.findIndex(
+              (header) => header.includes('unit of prod') || header.includes('prod unit') || header.includes('unite')
+            );
+            const sCoverCodeIdx = subHeaders.findIndex(
+              (header) => header.includes('cover code') || header.includes('code cover') || header.includes('cover')
+            );
 
             if (sDateIdx === -1 || sProdIdx === -1) {
               return;
@@ -330,6 +388,10 @@ export const parseExcelFile = async (
                   component: sheetName,
                   date: formattedDate,
                   weekKey,
+                  machine: undefined,
+                  reference: undefined,
+                  unitOfProduction: undefined,
+                  coverCode: undefined,
                   target: 0,
                   weeklyTarget: 0,
                   actualProduction: 0,
@@ -352,6 +414,23 @@ export const parseExcelFile = async (
                   subAggregatedByDate[formattedDate].target = rowDailyTarget;
                 }
               }
+
+              subAggregatedByDate[formattedDate].machine = mergeTextField(
+                subAggregatedByDate[formattedDate].machine,
+                row[sMachineIdx]
+              );
+              subAggregatedByDate[formattedDate].reference = mergeTextField(
+                subAggregatedByDate[formattedDate].reference,
+                row[sReferenceIdx]
+              );
+              subAggregatedByDate[formattedDate].unitOfProduction = mergeTextField(
+                subAggregatedByDate[formattedDate].unitOfProduction,
+                row[sUnitIdx]
+              );
+              subAggregatedByDate[formattedDate].coverCode = mergeTextField(
+                subAggregatedByDate[formattedDate].coverCode,
+                row[sCoverCodeIdx]
+              );
 
               subAggregatedByDate[formattedDate].actualProduction += actualProduction;
               subAggregatedByDate[formattedDate].conformQty += conformQty;

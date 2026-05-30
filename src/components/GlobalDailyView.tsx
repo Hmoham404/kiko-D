@@ -377,18 +377,18 @@ export const GlobalDailyView: React.FC<GlobalDailyViewProps> = ({ data, subCompo
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                 <div className="mb-3 flex items-center justify-between">
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Travail realise par jour</p>
                   <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
                     {recentDates.length} jours importes
                   </p>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {group.history.map((entry) => (
-                    <div key={`${group.key}-${entry.date}`} className="grid grid-cols-[64px_minmax(0,1fr)_56px] items-center gap-3">
+                    <div key={`${group.key}-${entry.date}`} className="grid grid-cols-[64px_minmax(0,1fr)_64px] items-center gap-4">
                       <span className="text-xs font-bold text-slate-500">{format(parseISO(entry.date), 'dd/MM')}</span>
-                      <div className="h-3 overflow-hidden rounded-full bg-slate-200">
+                      <div className="h-4 overflow-hidden rounded-full bg-slate-200">
                         <div
                           className={`h-full rounded-full ${group.accent}`}
                           style={{ width: `${Math.min(entry.metrics.progress * 100, 100)}%` }}
