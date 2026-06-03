@@ -12,12 +12,20 @@ interface ImportModalProps {
 }
 
 const DEPARTMENTS = [
-  { name: 'Injection' },
-  { name: 'Soudure' },
-  { name: 'Metallisation' },
-  { name: 'US serigraphie' },
-  { name: 'Assemblage' },
-  { name: 'Packaging' },
+  {
+    name: 'Injection',
+    fallbackWeeklyTarget: 12500 * 5,
+    fallbackSubTargets: {
+      base: Math.round((12500 * 5) / 3),
+      cover: Math.round((12500 * 5) / 3),
+      insert: Math.round((12500 * 5) / 3),
+    },
+  },
+  { name: 'Soudure', fallbackWeeklyTarget: 4167 * 5 },
+  { name: 'Metallisation', fallbackWeeklyTarget: 6700 * 5 },
+  { name: 'US serigraphie', fallbackWeeklyTarget: 16700 * 5 },
+  { name: 'Assemblage', fallbackWeeklyTarget: 5000 * 5 },
+  { name: 'Packaging', fallbackWeeklyTarget: 3333 * 5 },
 ];
 
 export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
@@ -96,7 +104,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
 
     if (hasProductionUpload && !hasTargetUpload && Object.keys(currentWeeklyTargets).length === 0) {
       allWarnings.push(
-        "Aucun fichier de targets n'a ete importe. Les donnees de production ont ete chargees sans nouveaux objectifs hebdomadaires."
+        "Aucun fichier de targets n'a ete importe. Des targets de secours par departement ont ete appliquees pour eviter les valeurs a zero."
       );
     }
 
@@ -112,7 +120,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
         );
       }
 
-      const result = await parseExcelFile(file, department.name, 0);
+      const result = await parseExcelFile(
+        file,
+        department.name,
+        department.fallbackWeeklyTarget,
+        department.name === 'Injection' ? department.fallbackSubTargets : undefined
+      );
       if (result.error) {
         newErrors.push(`Erreur pour ${department.name}: ${result.error}`);
         continue;
@@ -200,6 +213,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
 
           <p className="mb-6 text-sm text-gray-500">
             Vous pouvez importer un fichier de targets seul, des fichiers de production seuls, ou les deux ensemble.
+            Si aucun fichier de targets n&apos;est fourni, un target de secours par departement sera calcule
+            automatiquement.
           </p>
 
           <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4">

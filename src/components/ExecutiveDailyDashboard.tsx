@@ -369,8 +369,26 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     return getDepartmentSeries(department).find((item) => item.weekKey === weekKey) ?? null;
   };
 
+  const getDepartmentFallbackItem = (department: string, date: string) => {
+    const series = getDepartmentSeries(department);
+    if (series.length === 0) return null;
+
+    const previousItems = series.filter((item) => item.date < date);
+    if (previousItems.length > 0) {
+      return previousItems[previousItems.length - 1];
+    }
+
+    return series[0] ?? null;
+  };
+
   const getDailyTarget = (department: string, date: string) => {
-    const referenceItem = getDepartmentWeekReferenceItem(department, date);
+    const weekKey = getWeekMetadata(date).weekKey;
+    const importedWeeklyTarget = weeklyTargets[buildWeeklyTargetOverrideKey('department', department, weekKey)];
+    if (importedWeeklyTarget && importedWeeklyTarget > 0) {
+      return roundUnits(importedWeeklyTarget / WORKING_DAYS_PER_WEEK);
+    }
+
+    const referenceItem = getDepartmentWeekReferenceItem(department, date) ?? getDepartmentFallbackItem(department, date);
     if (!referenceItem) return 0;
 
     const weeklyTarget =
@@ -378,7 +396,33 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
       referenceItem.weeklyTarget;
 
     if (weeklyTarget > 0) return roundUnits(weeklyTarget / WORKING_DAYS_PER_WEEK);
-    return roundUnits(referenceItem.target);
+    if (referenceItem.target > 0) return roundUnits(referenceItem.target);
+
+    const previousTargetItem = getDepartmentSeries(department)
+      .filter((item) => item.target > 0 && item.date <= date)
+      .at(-1);
+    return roundUnits(previousTargetItem?.target ?? 0);
+  };
+
+  const getDepartmentWeeklyTarget = (department: string, weekKey: string) => {
+    const importedWeeklyTarget = weeklyTargets[buildWeeklyTargetOverrideKey('department', department, weekKey)];
+    if (importedWeeklyTarget && importedWeeklyTarget > 0) {
+      return roundUnits(importedWeeklyTarget);
+    }
+
+    const series = getDepartmentSeries(department);
+    const weekReferenceItem = series.find((item) => item.weekKey === weekKey && item.weeklyTarget > 0);
+    if (weekReferenceItem?.weeklyTarget) {
+      return roundUnits(weekReferenceItem.weeklyTarget);
+    }
+
+    const fallbackItem = [...series]
+      .reverse()
+      .find((item) => item.weeklyTarget > 0 || item.target > 0);
+
+    if (!fallbackItem) return 0;
+    if (fallbackItem.weeklyTarget > 0) return roundUnits(fallbackItem.weeklyTarget);
+    return roundUnits(fallbackItem.target * WORKING_DAYS_PER_WEEK);
   };
 
   const getDepartmentDailyMetrics = (department: string, date: string): Metrics => {
@@ -500,7 +544,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
   const buildRecentWeekBars = (group: GroupDefinition) =>
     visibleWeekKeys.map((weekKey) => {
       const weekRows = normalizedData.filter((item) => item.weekKey === weekKey && group.departments.includes(item.department));
-      const target = weekRows.reduce((sum, item) => sum + getDailyTarget(item.department, item.date), 0);
+      const target = group.departments.reduce((sum, department) => sum + getDepartmentWeeklyTarget(department, weekKey), 0);
       const actual = weekRows.reduce((sum, item) => sum + item.actualProduction, 0);
       const progress = target > 0 ? actual / target : 0;
       const referenceDate = weekKey.split('__')[0];
