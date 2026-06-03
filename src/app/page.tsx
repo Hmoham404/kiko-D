@@ -2,15 +2,13 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { AlertTriangle, FileSpreadsheet, Settings2, Trash2 } from 'lucide-react';
+import { AlertTriangle, FileSpreadsheet, Trash2 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { ImportModal } from '@/components/ImportModal';
-import { WeeklyTargetsModal } from '@/components/WeeklyTargetsModal';
 import { ExecutiveDailyDashboard } from '@/components/ExecutiveDailyDashboard';
 
 export default function DashboardPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [isTargetsModalOpen, setIsTargetsModalOpen] = useState(false);
   const [showWarnings, setShowWarnings] = useState(true);
   const { productionData, subComponentsData, warnings, clearData } = useStore();
 
@@ -68,15 +66,6 @@ export default function DashboardPage() {
             <div className="flex flex-wrap gap-3">
               {productionData.length > 0 && (
                 <button
-                  onClick={() => setIsTargetsModalOpen(true)}
-                  className="dashboard-shell-panel flex items-center rounded-xl px-4 py-2 text-sm font-black text-slate-700 transition hover:-translate-y-0.5 hover:border-[var(--dashboard-accent-red)] hover:text-[var(--dashboard-accent-red-strong)]"
-                >
-                  <Settings2 className="mr-2 h-4 w-4" />
-                  Regler les targets
-                </button>
-              )}
-              {productionData.length > 0 && (
-                <button
                   onClick={clearData}
                   className="dashboard-shell-panel flex items-center rounded-xl px-4 py-2 text-sm font-black text-slate-700 transition hover:-translate-y-0.5 hover:border-[var(--dashboard-accent-red)] hover:text-[var(--dashboard-accent-red-strong)]"
                 >
@@ -103,7 +92,10 @@ export default function DashboardPage() {
               </div>
               <h2 className="mb-2 text-3xl font-black tracking-tight text-slate-900">Aucune donnee de production</h2>
               <p className="mb-8 max-w-md text-center text-slate-500">
-                Importez les fichiers Excel de chaque departement pour construire le dashboard principal.
+                Importez les fichiers Excel de chaque departement et, si besoin, votre fichier de targets depuis la
+                fenetre d&apos;import.
+                {' '}
+                <span className="font-semibold text-slate-700">Aucune dependance au dossier public.</span>
               </p>
               <button
                 onClick={() => setIsImportModalOpen(true)}
@@ -149,7 +141,6 @@ export default function DashboardPage() {
         </main>
 
         <ImportModal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} />
-        <WeeklyTargetsModal isOpen={isTargetsModalOpen} onClose={() => setIsTargetsModalOpen(false)} />
       </div>
     </div>
   );

@@ -50,6 +50,7 @@ interface AppState {
   addSubComponentsData: (data: SubComponentData[]) => void;
   setWeeklyTarget: (key: string, value: number) => void;
   setWeeklyTargets: (entries: Record<string, number>) => void;
+  replaceWeeklyTargets: (entries: Record<string, number>) => void;
   removeWarning: (warning: string) => void;
   clearData: () => void;
 }
@@ -118,6 +119,9 @@ export const useStore = create<AppState>()(
           ...entries,
         },
       })),
+      replaceWeeklyTargets: (entries) => set({
+        weeklyTargets: entries,
+      }),
       removeWarning: (warning) => set((state) => ({
         warnings: state.warnings.filter(w => w !== warning),
       })),

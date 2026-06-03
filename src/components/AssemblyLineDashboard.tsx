@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
   CartesianGrid,
   Legend,
@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { CalendarDays, Save, Target, TrendingUp } from 'lucide-react';
+import { CalendarDays, Target, TrendingUp } from 'lucide-react';
 import { KpiCard } from '@/components/KpiCard';
 import { ProductionData, useStore } from '@/store/useStore';
 import { buildWeeklyTargetOverrideKey } from '@/lib/weeklyMetrics';
@@ -65,8 +65,6 @@ export const AssemblyLineDashboard: React.FC<AssemblyLineDashboardProps> = ({ da
     .slice()
     .sort((a, b) => a.date.localeCompare(b.date));
   const weeklyTargets = useStore((state) => state.weeklyTargets);
-  const setWeeklyTarget = useStore((state) => state.setWeeklyTarget);
-  const targetInputRef = useRef<HTMLInputElement | null>(null);
 
   const [selectedDate, setSelectedDate] = useState<string>(assemblyData[assemblyData.length - 1]?.date ?? '');
   const activeDate = assemblyData.some((item) => item.date === selectedDate)
@@ -74,9 +72,8 @@ export const AssemblyLineDashboard: React.FC<AssemblyLineDashboardProps> = ({ da
     : assemblyData[assemblyData.length - 1]?.date ?? '';
   const activeItem = assemblyData.find((item) => item.date === activeDate);
   const activeWeekKey = activeItem?.weekKey ?? '';
-  const activeTargetKey = activeWeekKey ? buildWeeklyTargetOverrideKey('department', 'Assemblage', activeWeekKey) : '';
   const currentWeeklyTarget = activeItem
-    ? weeklyTargets[activeTargetKey] ?? activeItem.weeklyTarget
+    ? weeklyTargets[buildWeeklyTargetOverrideKey('department', 'Assemblage', activeWeekKey)] ?? activeItem.weeklyTarget
     : 0;
 
   const getDailyTarget = (item: ProductionData) => {
@@ -216,31 +213,13 @@ export const AssemblyLineDashboard: React.FC<AssemblyLineDashboardProps> = ({ da
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
               <span className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-                Objectif assemblage à régler
+                Objectif hebdomadaire importe
               </span>
-              <div className="mt-2 flex gap-2">
-                <input
-                  key={activeWeekKey}
-                  ref={targetInputRef}
-                  type="number"
-                  min="0"
-                  defaultValue={currentWeeklyTarget ? String(currentWeeklyTarget) : ''}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none"
-                />
-                <button
-                  onClick={() => {
-                    if (!activeWeekKey) return;
-                    setWeeklyTarget(activeTargetKey, Number(targetInputRef.current?.value || 0));
-                  }}
-                  className="inline-flex items-center justify-center rounded-xl bg-[var(--dashboard-primary)] px-4 py-2 text-sm font-black text-white transition hover:brightness-110"
-                >
-                  <Save className="mr-2 h-4 w-4" />
-                  Enregistrer
-                </button>
-              </div>
+              <p className="mt-2 text-2xl font-black text-slate-900">{formatNumber(currentWeeklyTarget)}</p>
               <p className="mt-2 text-xs text-slate-500">
                 Semaine active: <span className="font-bold text-slate-700">{activeItem?.week ?? '-'}</span>
               </p>
+              <p className="mt-1 text-xs text-slate-500">Source: fichier de targets importe</p>
             </div>
           </div>
         </div>
