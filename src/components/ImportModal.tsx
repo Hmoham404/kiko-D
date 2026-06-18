@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { X, Upload, CheckCircle, AlertCircle, FileSpreadsheet } from 'lucide-react';
 import { parseExcelFile } from '@/lib/excelParser';
+import { readJsonResponse } from '@/lib/http';
 import { parseTargetSettingsWorkbook } from '@/lib/targetSettingsParser';
 import { useStore, ProductionData, SubComponentData } from '@/store/useStore';
 
@@ -35,6 +36,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
   const [errors, setErrors] = useState<string[]>([]);
   const [success, setSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('Import termine avec succes.');
+  const setSnapshot = useStore((state) => state.setSnapshot);
   const addProductionData = useStore((state) => state.addProductionData);
   const addSubComponentsData = useStore((state) => state.addSubComponentsData);
   const replaceWeeklyTargets = useStore((state) => state.replaceWeeklyTargets);
@@ -65,6 +67,23 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
     setErrors([]);
   };
 
+  const applyLocalFallback = (
+    productionData: ProductionData[],
+    subComponentsData: SubComponentData[],
+    weeklyTargets: Record<string, number>,
+    warnings: string[]
+  ) => {
+    if (Object.keys(weeklyTargets).length > 0) {
+      replaceWeeklyTargets(weeklyTargets);
+    }
+
+    addProductionData(productionData, warnings);
+
+    if (subComponentsData.length > 0) {
+      addSubComponentsData(subComponentsData);
+    }
+  };
+
   const handleImport = async () => {
     setLoading(true);
     setErrors([]);
@@ -82,11 +101,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
 
     let targetSettingsWarnings: string[] = [];
     let importedTargets = false;
+    let importedWeeklyTargets: Record<string, number> = {};
 
     if (targetFile) {
       try {
         const { entries, warnings } = parseTargetSettingsWorkbook(await targetFile.arrayBuffer());
-        replaceWeeklyTargets(entries);
+        importedWeeklyTargets = entries;
         targetSettingsWarnings = warnings;
         importedTargets = true;
       } catch (error) {
@@ -101,8 +121,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
     let allSubComponents: SubComponentData[] = [];
     const newErrors: string[] = [];
     let allWarnings: string[] = [...targetSettingsWarnings];
+    const hasExistingWeeklyTargets = Object.keys(currentWeeklyTargets).length > 0;
 
-    if (hasProductionUpload && !hasTargetUpload && Object.keys(currentWeeklyTargets).length === 0) {
+    if (hasProductionUpload && !hasTargetUpload && !hasExistingWeeklyTargets) {
       allWarnings.push(
         "Aucun fichier de targets n'a ete importe. Des targets de secours par departement ont ete appliquees pour eviter les valeurs a zero."
       );
@@ -150,35 +171,93 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
       return;
     }
 
-    if (!hasProductionUpload && importedTargets) {
-      addProductionData([], allWarnings);
-      setSuccessMessage('Targets hebdomadaires importees avec succes.');
-      setSuccess(true);
-      setLoading(false);
-
-      window.setTimeout(() => {
-        onClose();
-        resetModal();
-      }, 1800);
-      return;
-    }
-
     if (hasProductionUpload && allData.length === 0) {
       setErrors(['Aucune donnee valide trouvee dans les fichiers importes.']);
       setLoading(false);
       return;
     }
 
-    if (allData.length > 0) {
-      addProductionData(allData, allWarnings);
-      if (allSubComponents.length > 0) {
-        addSubComponentsData(allSubComponents);
+    try {
+      const response = await fetch('/api/dashboard-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          productionData: allData,
+          subComponentsData: allSubComponents,
+          weeklyTargets: importedWeeklyTargets,
+          warnings: allWarnings,
+        }),
+      });
+
+      const payload = (await readJsonResponse<{
+        error?: string;
+        snapshot?: {
+          productionData: ProductionData[];
+          subComponentsData: SubComponentData[];
+          weeklyTargets: Record<string, number>;
+          warnings: string[];
+        };
+      }>(response)) ?? null;
+
+      if (response.ok && !payload?.snapshot) {
+        applyLocalFallback(allData, allSubComponents, importedWeeklyTargets, allWarnings);
+
+        setSuccessMessage(
+          "Donnees chargees dans le dashboard, mais la reponse serveur etait vide. Verifiez la synchronisation Supabase."
+        );
+        setSuccess(true);
+        setLoading(false);
+
+        window.setTimeout(() => {
+          onClose();
+          resetModal();
+        }, 2200);
+        return;
       }
+
+      if (!response.ok || !payload?.snapshot) {
+        applyLocalFallback(allData, allSubComponents, importedWeeklyTargets, allWarnings);
+
+        setSuccessMessage(
+          payload?.error
+            ? `Donnees chargees dans le dashboard localement. Synchronisation serveur a verifier: ${payload.error}`
+            : 'Donnees chargees dans le dashboard localement. Synchronisation serveur a verifier.'
+        );
+        setSuccess(true);
+        setLoading(false);
+
+        window.setTimeout(() => {
+          onClose();
+          resetModal();
+        }, 2400);
+        return;
+      }
+
+      setSnapshot(payload.snapshot);
+    } catch (error) {
+      applyLocalFallback(allData, allSubComponents, importedWeeklyTargets, allWarnings);
+
+      const message = error instanceof Error ? error.message : 'Erreur reseau pendant la sauvegarde.';
+      setSuccessMessage(`Donnees chargees dans le dashboard localement. Synchronisation serveur a verifier: ${message}`);
+      setSuccess(true);
+      setLoading(false);
+
+      window.setTimeout(() => {
+        onClose();
+        resetModal();
+      }, 2400);
+      return;
     }
 
-    setSuccessMessage(
-      importedTargets ? 'Donnees de production et targets hebdomadaires importees avec succes.' : 'Donnees de production importees avec succes.'
-    );
+    if (importedTargets && hasProductionUpload) {
+      setSuccessMessage('Donnees de production et targets hebdomadaires importees avec succes.');
+    } else if (importedTargets) {
+      setSuccessMessage('Targets hebdomadaires importees avec succes.');
+    } else {
+      setSuccessMessage('Donnees de production importees avec succes.');
+    }
     setSuccess(true);
     setLoading(false);
 

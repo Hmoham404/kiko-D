@@ -1,45 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { StateStorage } from 'zustand/middleware';
+import type { DashboardSnapshot, ProductionData, SubComponentData } from '@/lib/dashboardTypes';
 
-export interface ProductionData {
-  department: string;
-  date: string;
-  week: string;
-  weekKey: string;
-  shift?: string;
-  partNumber?: string;
-  machine?: string;
-  unitOfProduction?: string;
-  target: number;
-  weeklyTarget: number;
-  actualProduction: number;
-  conformQty: number;
-  scrapQty: number;
-  progress: number;
-  gap: number;
-  scrapRate: number;
-  status: 'green' | 'orange' | 'red' | 'critical';
-}
-
-export interface SubComponentData {
-  component: string;
-  date: string;
-  weekKey: string;
-  machine?: string;
-  reference?: string;
-  unitOfProduction?: string;
-  coverCode?: string;
-  target: number;
-  weeklyTarget: number;
-  actualProduction: number;
-  conformQty: number;
-  scrapQty: number;
-  progress: number;
-  gap: number;
-  scrapRate: number;
-  status: string;
-}
+export type { ProductionData, SubComponentData } from '@/lib/dashboardTypes';
 
 interface AppState {
   productionData: ProductionData[];
@@ -48,6 +12,7 @@ interface AppState {
   warnings: string[];
   addProductionData: (data: ProductionData[], warnings?: string[]) => void;
   addSubComponentsData: (data: SubComponentData[]) => void;
+  setSnapshot: (snapshot: DashboardSnapshot) => void;
   setWeeklyTarget: (key: string, value: number) => void;
   setWeeklyTargets: (entries: Record<string, number>) => void;
   replaceWeeklyTargets: (entries: Record<string, number>) => void;
@@ -106,6 +71,12 @@ export const useStore = create<AppState>()(
           }
         });
         return { subComponentsData: newData };
+      }),
+      setSnapshot: (snapshot) => set({
+        productionData: snapshot.productionData,
+        subComponentsData: snapshot.subComponentsData,
+        weeklyTargets: snapshot.weeklyTargets,
+        warnings: snapshot.warnings,
       }),
       setWeeklyTarget: (key, value) => set((state) => ({
         weeklyTargets: {

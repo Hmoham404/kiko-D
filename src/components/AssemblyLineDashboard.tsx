@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { CalendarDays, Target, TrendingUp } from 'lucide-react';
+import { CalendarDays, FileDown, Target, TrendingUp } from 'lucide-react';
 import { KpiCard } from '@/components/KpiCard';
 import { ProductionData, useStore } from '@/store/useStore';
 import { buildWeeklyTargetOverrideKey } from '@/lib/weeklyMetrics';
@@ -34,6 +34,13 @@ const formatNumber = (value: number) => new Intl.NumberFormat('fr-FR').format(Ma
 const formatPercent = (value: number) => `${(value * 100).toFixed(1)}%`;
 const formatTooltipNumber = (value: unknown) =>
   formatNumber(Number(Array.isArray(value) ? value[0] ?? 0 : value ?? 0));
+const escapeHtml = (value: string | number) =>
+  String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 
 const formatDateLabel = (date: string) => {
   try {
@@ -113,6 +120,232 @@ export const AssemblyLineDashboard: React.FC<AssemblyLineDashboardProps> = ({ da
   const activeMonthKey = activeDate ? activeDate.slice(0, 7) : '';
   const monthlyItems = assemblyData.filter((item) => item.date.startsWith(activeMonthKey));
   const monthlyMetrics = buildMetrics(monthlyItems);
+
+  const handleDownloadSelectedDay = () => {
+    if (!activeItem) return;
+
+    const target = getDailyTarget(activeItem);
+    const actual = activeItem.actualProduction;
+    const gap = actual - target;
+    const rate = target > 0 ? actual / target : 0;
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1100,height=900');
+
+    if (!printWindow) {
+      return;
+    }
+
+    const reportHtml = `
+      <!doctype html>
+      <html lang="fr">
+        <head>
+          <meta charset="utf-8" />
+          <title>Rapport Assemblage ${escapeHtml(activeItem.date)}</title>
+          <style>
+            body {
+              font-family: Aptos, "Segoe UI", sans-serif;
+              color: #16202b;
+              margin: 28px;
+              background: #ffffff;
+            }
+            h1, h2, h3, p {
+              margin: 0;
+            }
+            .hero {
+              border: 1px solid #dbe4ea;
+              border-radius: 20px;
+              padding: 24px;
+              background: linear-gradient(135deg, #f8fbfd, #edf3f7);
+            }
+            .eyebrow {
+              font-size: 11px;
+              font-weight: 800;
+              letter-spacing: .18em;
+              text-transform: uppercase;
+              color: #64748b;
+            }
+            .title {
+              margin-top: 10px;
+              font-size: 34px;
+              font-weight: 900;
+              color: #0f172a;
+            }
+            .subtitle {
+              margin-top: 8px;
+              color: #475569;
+              font-size: 14px;
+            }
+            .grid {
+              display: grid;
+              grid-template-columns: repeat(4, minmax(0, 1fr));
+              gap: 14px;
+              margin-top: 20px;
+            }
+            .card {
+              border: 1px solid #dbe4ea;
+              border-radius: 16px;
+              padding: 14px 16px;
+              background: #ffffff;
+            }
+            .card-label {
+              font-size: 10px;
+              font-weight: 800;
+              letter-spacing: .14em;
+              text-transform: uppercase;
+              color: #64748b;
+            }
+            .card-value {
+              margin-top: 8px;
+              font-size: 24px;
+              font-weight: 900;
+              color: #0f172a;
+            }
+            .section {
+              margin-top: 26px;
+            }
+            .section h2 {
+              font-size: 20px;
+              font-weight: 900;
+              color: #0f172a;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 12px;
+            }
+            th, td {
+              border: 1px solid #dbe4ea;
+              padding: 10px 12px;
+              text-align: left;
+              font-size: 13px;
+            }
+            th {
+              background: #eef3f7;
+              font-size: 11px;
+              text-transform: uppercase;
+              letter-spacing: .12em;
+              color: #475569;
+            }
+            .strong {
+              font-weight: 800;
+            }
+            .right {
+              text-align: right;
+            }
+            @media print {
+              body {
+                margin: 16px;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <section class="hero">
+            <p class="eyebrow">Rapport journalier detaille</p>
+            <h1 class="title">Assemblage - ${escapeHtml(formatDateLabel(activeItem.date))}</h1>
+            <p class="subtitle">Semaine ${escapeHtml(activeItem.week)} | Machine ${escapeHtml(activeItem.machine ?? '-')} | Reference ${escapeHtml(activeItem.partNumber ?? '-')}</p>
+
+            <div class="grid">
+              <div class="card">
+                <p class="card-label">Objectif du jour</p>
+                <p class="card-value">${escapeHtml(formatNumber(target))}</p>
+              </div>
+              <div class="card">
+                <p class="card-label">Realise du jour</p>
+                <p class="card-value">${escapeHtml(formatNumber(actual))}</p>
+              </div>
+              <div class="card">
+                <p class="card-label">Conforme</p>
+                <p class="card-value">${escapeHtml(formatNumber(activeItem.conformQty))}</p>
+              </div>
+              <div class="card">
+                <p class="card-label">Taux</p>
+                <p class="card-value">${escapeHtml(formatPercent(rate))}</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <h2>Fiche detaillee du jour</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Departement</th>
+                  <th>Machine</th>
+                  <th>Reference</th>
+                  <th>Shift</th>
+                  <th>Unite</th>
+                  <th class="right">Target</th>
+                  <th class="right">Weekly Target</th>
+                  <th class="right">Realise</th>
+                  <th class="right">Conforme</th>
+                  <th class="right">Scrap</th>
+                  <th class="right">Ecart</th>
+                  <th class="right">Taux</th>
+                  <th>Statut</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>${escapeHtml(formatDateLabel(activeItem.date))}</td>
+                  <td class="strong">${escapeHtml(activeItem.department)}</td>
+                  <td>${escapeHtml(activeItem.machine ?? '-')}</td>
+                  <td>${escapeHtml(activeItem.partNumber ?? '-')}</td>
+                  <td>${escapeHtml(activeItem.shift ?? '-')}</td>
+                  <td>${escapeHtml(activeItem.unitOfProduction ?? '-')}</td>
+                  <td class="right strong">${escapeHtml(formatNumber(target))}</td>
+                  <td class="right">${escapeHtml(formatNumber(currentWeeklyTarget))}</td>
+                  <td class="right strong">${escapeHtml(formatNumber(actual))}</td>
+                  <td class="right">${escapeHtml(formatNumber(activeItem.conformQty))}</td>
+                  <td class="right">${escapeHtml(formatNumber(activeItem.scrapQty))}</td>
+                  <td class="right">${escapeHtml(`${gap > 0 ? '+' : ''}${formatNumber(gap)}`)}</td>
+                  <td class="right">${escapeHtml(formatPercent(rate))}</td>
+                  <td>${escapeHtml(activeItem.status)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="section">
+            <h2>Synthese du jour</h2>
+            <table>
+              <tbody>
+                <tr>
+                  <th>Objectif du jour</th>
+                  <td class="right">${escapeHtml(formatNumber(dailyMetrics.target))}</td>
+                </tr>
+                <tr>
+                  <th>Realise du jour</th>
+                  <td class="right">${escapeHtml(formatNumber(dailyMetrics.actual))}</td>
+                </tr>
+                <tr>
+                  <th>Conforme</th>
+                  <td class="right">${escapeHtml(formatNumber(dailyMetrics.conform))}</td>
+                </tr>
+                <tr>
+                  <th>Ecart</th>
+                  <td class="right">${escapeHtml(`${dailyMetrics.gap > 0 ? '+' : ''}${formatNumber(dailyMetrics.gap)}`)}</td>
+                </tr>
+                <tr>
+                  <th>Taux</th>
+                  <td class="right">${escapeHtml(formatPercent(dailyMetrics.rate))}</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(reportHtml);
+    printWindow.document.close();
+    printWindow.focus();
+
+    window.setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
 
   const cumulativeMonthChart = monthlyItems.reduce<
     Array<{ date: string; cumulativeTarget: number; cumulativeActual: number }>
@@ -222,6 +455,18 @@ export const AssemblyLineDashboard: React.FC<AssemblyLineDashboardProps> = ({ da
               <p className="mt-1 text-xs text-slate-500">Source: fichier de targets importe</p>
             </div>
           </div>
+        </div>
+
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={handleDownloadSelectedDay}
+            disabled={!activeItem}
+            className="inline-flex items-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#13304d,#1f4f72)] px-4 py-2.5 text-sm font-black text-white shadow-[0_18px_36px_-18px_rgba(19,48,77,0.72)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <FileDown className="h-4 w-4" />
+            Exporter le rapport detaille du jour
+          </button>
         </div>
       </section>
 
