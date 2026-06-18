@@ -4,6 +4,8 @@ import React, { useMemo, useState } from 'react';
 import { FileDown } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 import type { ProductionData } from '@/lib/dashboardTypes';
 
@@ -34,18 +36,27 @@ const formatDateLabel = (date: string) => {
   }
 };
 
-const escapeHtml = (value: string | number) =>
-  String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
+const getImageDataUrl = async (url: string) => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error('Logo indisponible.');
+  }
 
-const getToneColor = (progress: number) => {
-  if (progress > 0.95) return '#1f9d55';
-  if (progress >= 0.85) return '#d97706';
-  return '#d6455d';
+  const blob = await response.blob();
+
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error('Lecture du logo impossible.'));
+    };
+    reader.onerror = () => reject(new Error('Lecture du logo impossible.'));
+    reader.readAsDataURL(blob);
+  });
 };
 
 export const DepartmentPdfExportButton: React.FC<DepartmentPdfExportButtonProps> = ({ data }) => {
@@ -86,298 +97,171 @@ export const DepartmentPdfExportButton: React.FC<DepartmentPdfExportButtonProps>
       .sort((left, right) => left.department.localeCompare(right.department));
   }, [data]);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (reports.length === 0) return;
 
     setExportError(null);
     setIsExporting(true);
 
-    const logoUrl = `${window.location.origin}/logo%20myc.jpg`;
-    const generatedAt = format(new Date(), 'dd/MM/yyyy HH:mm', { locale: fr });
+    try {
+      const logoDataUrl = await getImageDataUrl(`${window.location.origin}/logo%20myc.jpg`).catch(() => null);
+      const generatedAt = format(new Date(), 'dd/MM/yyyy HH:mm', { locale: fr });
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
 
-    const sections = reports
-      .map((report, index) => {
-        const detailRows = report.items
-          .map((item) => {
+      reports.forEach((report, index) => {
+        if (index > 0) {
+          doc.addPage();
+        }
+
+        const pageWidth = doc.internal.pageSize.getWidth();
+        let cursorY = 16;
+
+        doc.setFillColor(248, 251, 253);
+        doc.roundedRect(10, 10, pageWidth - 20, 42, 6, 6, 'F');
+        doc.setDrawColor(217, 227, 234);
+        doc.roundedRect(10, 10, pageWidth - 20, 42, 6, 6, 'S');
+
+        if (logoDataUrl) {
+          doc.addImage(logoDataUrl, 'JPEG', 14, 14, 26, 14);
+        }
+
+        doc.setTextColor(123, 139, 161);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.text('MANUFACTURING COCKPIT', 44, 18);
+
+        doc.setTextColor(15, 23, 42);
+        doc.setFontSize(18);
+        doc.text('Rapport detaille departement', 44, 25);
+
+        doc.setFontSize(10);
+        doc.setTextColor(82, 97, 115);
+        doc.text(`Genere le ${generatedAt}`, 44, 31);
+
+        doc.setTextColor(19, 48, 77);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(16);
+        doc.text(report.department, 14, 42);
+
+        doc.setTextColor(82, 97, 115);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.text(
+          `Periode couverte: ${formatDateLabel(report.dateStart)} au ${formatDateLabel(report.dateEnd)}`,
+          14,
+          48
+        );
+
+        const metricCards = [
+          { label: 'Objectif total', value: formatNumber(report.target), color: [15, 23, 42] as const },
+          { label: 'Realise total', value: formatNumber(report.actual), color: [15, 23, 42] as const },
+          { label: 'Conforme', value: formatNumber(report.conform), color: [15, 23, 42] as const },
+          {
+            label: 'Taux',
+            value: formatPercent(report.progress),
+            color:
+              report.progress > 0.95 ? ([31, 157, 85] as const) : report.progress >= 0.85 ? ([217, 119, 6] as const) : ([214, 69, 93] as const),
+          },
+        ];
+
+        const cardWidth = (pageWidth - 34) / 4;
+        metricCards.forEach((card, cardIndex) => {
+          const x = 10 + cardIndex * (cardWidth + 4);
+          doc.setFillColor(255, 255, 255);
+          doc.roundedRect(x, 58, cardWidth, 20, 4, 4, 'F');
+          doc.setDrawColor(217, 227, 234);
+          doc.roundedRect(x, 58, cardWidth, 20, 4, 4, 'S');
+          doc.setTextColor(123, 139, 161);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7);
+          doc.text(card.label.toUpperCase(), x + 4, 64);
+          doc.setTextColor(card.color[0], card.color[1], card.color[2]);
+          doc.setFontSize(13);
+          doc.text(card.value, x + 4, 72);
+        });
+
+        cursorY = 86;
+        doc.setTextColor(15, 23, 42);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('Detail journalier', 14, cursorY);
+
+        autoTable(doc, {
+          startY: cursorY + 4,
+          margin: { left: 10, right: 10 },
+          head: [[
+            'Date',
+            'Semaine',
+            'Machine / Shift',
+            'Reference',
+            'Target',
+            'Realise',
+            'Conforme',
+            'Scrap',
+            'Ecart',
+            'Taux',
+          ]],
+          body: report.items.map((item) => {
             const gap = item.actualProduction - item.target;
             const rate = item.target > 0 ? item.actualProduction / item.target : 0;
 
-            return `
-              <tr>
-                <td>${escapeHtml(formatDateLabel(item.date))}</td>
-                <td>${escapeHtml(item.week)}</td>
-                <td>${escapeHtml(item.machine ?? item.shift ?? '-')}</td>
-                <td>${escapeHtml(item.partNumber ?? '-')}</td>
-                <td class="right">${escapeHtml(formatNumber(item.target))}</td>
-                <td class="right">${escapeHtml(formatNumber(item.actualProduction))}</td>
-                <td class="right">${escapeHtml(formatNumber(item.conformQty))}</td>
-                <td class="right">${escapeHtml(formatNumber(item.scrapQty))}</td>
-                <td class="right">${escapeHtml(`${gap > 0 ? '+' : ''}${formatNumber(gap)}`)}</td>
-                <td class="right">${escapeHtml(formatPercent(rate))}</td>
-              </tr>
-            `;
-          })
-          .join('');
+            return [
+              formatDateLabel(item.date),
+              item.week,
+              item.machine ?? item.shift ?? '-',
+              item.partNumber ?? '-',
+              formatNumber(item.target),
+              formatNumber(item.actualProduction),
+              formatNumber(item.conformQty),
+              formatNumber(item.scrapQty),
+              `${gap > 0 ? '+' : ''}${formatNumber(gap)}`,
+              formatPercent(rate),
+            ];
+          }),
+          theme: 'grid',
+          headStyles: {
+            fillColor: [238, 243, 247],
+            textColor: [71, 85, 105],
+            fontStyle: 'bold',
+            fontSize: 8,
+          },
+          bodyStyles: {
+            fontSize: 8,
+            textColor: [22, 32, 43],
+          },
+          alternateRowStyles: {
+            fillColor: [250, 252, 253],
+          },
+          styles: {
+            lineColor: [217, 227, 234],
+            lineWidth: 0.1,
+            cellPadding: 2.5,
+          },
+          didDrawPage: () => {
+            const pageCount = doc.getNumberOfPages();
+            const currentPage = doc.getCurrentPageInfo().pageNumber;
+            doc.setFontSize(8);
+            doc.setTextColor(123, 139, 161);
+            doc.text(
+              `Page ${currentPage}/${pageCount}`,
+              pageWidth - 24,
+              doc.internal.pageSize.getHeight() - 8
+            );
+          },
+        });
+      });
 
-        return `
-          <section class="department ${index > 0 ? 'page-break' : ''}">
-            <div class="report-header">
-              <div class="brand-row">
-                <img src="${escapeHtml(logoUrl)}" alt="MYC Beauty" class="logo" />
-                <div>
-                  <p class="eyebrow">Manufacturing cockpit</p>
-                  <h1>Rapport detaille departement</h1>
-                  <p class="muted">Genere le ${escapeHtml(generatedAt)}</p>
-                </div>
-              </div>
-              <div class="hero-card">
-                <p class="eyebrow">Departement</p>
-                <h2>${escapeHtml(report.department)}</h2>
-                <p class="muted">Periode couverte: ${escapeHtml(formatDateLabel(report.dateStart))} au ${escapeHtml(formatDateLabel(report.dateEnd))}</p>
-              </div>
-            </div>
-
-            <div class="kpi-grid">
-              <div class="kpi-card">
-                <p class="kpi-label">Objectif total</p>
-                <p class="kpi-value">${escapeHtml(formatNumber(report.target))}</p>
-              </div>
-              <div class="kpi-card">
-                <p class="kpi-label">Realise total</p>
-                <p class="kpi-value">${escapeHtml(formatNumber(report.actual))}</p>
-              </div>
-              <div class="kpi-card">
-                <p class="kpi-label">Conforme</p>
-                <p class="kpi-value">${escapeHtml(formatNumber(report.conform))}</p>
-              </div>
-              <div class="kpi-card">
-                <p class="kpi-label">Taux</p>
-                <p class="kpi-value" style="color:${getToneColor(report.progress)}">${escapeHtml(formatPercent(report.progress))}</p>
-              </div>
-            </div>
-
-            <div class="table-card">
-              <h3>Detail journalier</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Semaine</th>
-                    <th>Machine / Shift</th>
-                    <th>Reference</th>
-                    <th class="right">Target</th>
-                    <th class="right">Realise</th>
-                    <th class="right">Conforme</th>
-                    <th class="right">Scrap</th>
-                    <th class="right">Ecart</th>
-                    <th class="right">Taux</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${detailRows}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        `;
-      })
-      .join('');
-
-    const printableDocument = `
-      <!doctype html>
-      <html lang="fr">
-        <head>
-          <meta charset="utf-8" />
-          <title>Rapports PDF par departement</title>
-          <style>
-            body {
-              font-family: Aptos, "Segoe UI", sans-serif;
-              color: #16202b;
-              margin: 0;
-              background: #f3f6f9;
-            }
-            .department {
-              padding: 28px;
-            }
-            .page-break {
-              page-break-before: always;
-            }
-            .report-header {
-              border: 1px solid #d9e3ea;
-              border-radius: 22px;
-              padding: 24px;
-              background: linear-gradient(135deg, #ffffff, #eef3f7);
-              box-shadow: 0 20px 44px -34px rgba(15, 23, 42, 0.22);
-            }
-            .brand-row {
-              display: flex;
-              align-items: center;
-              gap: 16px;
-            }
-            .logo {
-              width: 96px;
-              height: auto;
-              object-fit: contain;
-              border-radius: 16px;
-              border: 1px solid #d9e3ea;
-              background: white;
-              padding: 10px;
-            }
-            .eyebrow {
-              margin: 0;
-              font-size: 11px;
-              font-weight: 800;
-              letter-spacing: .18em;
-              text-transform: uppercase;
-              color: #7b8ba1;
-            }
-            h1 {
-              margin: 8px 0 4px;
-              font-size: 30px;
-              font-weight: 900;
-              color: #0f172a;
-            }
-            h2 {
-              margin: 8px 0 0;
-              font-size: 28px;
-              font-weight: 900;
-              color: #13304d;
-            }
-            h3 {
-              margin: 0 0 14px;
-              font-size: 18px;
-              font-weight: 900;
-              color: #0f172a;
-            }
-            .muted {
-              margin: 6px 0 0;
-              color: #526173;
-              font-size: 13px;
-            }
-            .hero-card {
-              margin-top: 18px;
-              border: 1px solid #d9e3ea;
-              border-radius: 18px;
-              background: white;
-              padding: 18px;
-            }
-            .kpi-grid {
-              display: grid;
-              grid-template-columns: repeat(4, minmax(0, 1fr));
-              gap: 14px;
-              margin-top: 18px;
-            }
-            .kpi-card {
-              border: 1px solid #d9e3ea;
-              border-radius: 16px;
-              background: white;
-              padding: 16px;
-            }
-            .kpi-label {
-              margin: 0;
-              font-size: 10px;
-              font-weight: 800;
-              letter-spacing: .14em;
-              text-transform: uppercase;
-              color: #7b8ba1;
-            }
-            .kpi-value {
-              margin: 10px 0 0;
-              font-size: 24px;
-              font-weight: 900;
-              color: #0f172a;
-            }
-            .table-card {
-              margin-top: 18px;
-              border: 1px solid #d9e3ea;
-              border-radius: 18px;
-              background: white;
-              padding: 18px;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-            }
-            th, td {
-              border: 1px solid #d9e3ea;
-              padding: 10px 12px;
-              text-align: left;
-              font-size: 12px;
-            }
-            th {
-              background: #eef3f7;
-              font-size: 10px;
-              font-weight: 900;
-              letter-spacing: .12em;
-              text-transform: uppercase;
-              color: #475569;
-            }
-            .right {
-              text-align: right;
-            }
-            @media print {
-              body {
-                background: white;
-              }
-              .department {
-                padding: 16px;
-              }
-            }
-          </style>
-        </head>
-        <body>${sections}</body>
-      </html>
-    `;
-
-    const iframe = document.createElement('iframe');
-    iframe.setAttribute('aria-hidden', 'true');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    iframe.style.visibility = 'hidden';
-
-    const cleanup = () => {
-      window.setTimeout(() => {
-        iframe.remove();
-        setIsExporting(false);
-      }, 400);
-    };
-
-    iframe.onload = () => {
-      const frameWindow = iframe.contentWindow;
-      if (!frameWindow) {
-        setExportError("L'aperçu PDF n'a pas pu être ouvert.");
-        cleanup();
-        return;
-      }
-
-      window.setTimeout(() => {
-        try {
-          frameWindow.focus();
-          frameWindow.print();
-        } catch {
-          setExportError("Le navigateur a bloque l'impression PDF.");
-        } finally {
-          cleanup();
-        }
-      }, 900);
-    };
-
-    document.body.appendChild(iframe);
-
-    const frameDocument = iframe.contentDocument;
-    if (!frameDocument) {
-      setExportError("Le document PDF n'a pas pu être préparé.");
-      cleanup();
-      return;
+      const fileStamp = format(new Date(), 'yyyyMMdd-HHmm');
+      doc.save(`rapport-departements-${fileStamp}.pdf`);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "L'export PDF a echoue.");
+    } finally {
+      setIsExporting(false);
     }
-
-    frameDocument.open();
-    frameDocument.write(printableDocument);
-    frameDocument.close();
   };
 
   return (
@@ -396,7 +280,7 @@ export const DepartmentPdfExportButton: React.FC<DepartmentPdfExportButtonProps>
         <p className="max-w-xs text-right text-xs font-semibold text-rose-600">{exportError}</p>
       ) : (
         <p className="max-w-[14rem] text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-          Impression puis Enregistrer en PDF
+          Fichier PDF telecharge directement
         </p>
       )}
     </div>
