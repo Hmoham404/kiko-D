@@ -9,6 +9,8 @@ import { DepartmentPdfExportButton } from '@/components/DepartmentPdfExportButto
 import { ImportModal } from '@/components/ImportModal';
 import { ExecutiveDailyDashboard } from '@/components/ExecutiveDailyDashboard';
 
+const ACCESS_CODE = 'myc@2026';
+
 export default function DashboardPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [showWarnings, setShowWarnings] = useState(true);
@@ -149,6 +151,35 @@ export default function DashboardPage() {
     return () => window.clearTimeout(syncHandle);
   }, [mounted]);
 
+  const requestActionCode = React.useCallback((actionLabel: string) => {
+    const enteredCode = window.prompt(`Entrez le code pour "${actionLabel}"`);
+
+    if (enteredCode === null) {
+      return false;
+    }
+
+    if (enteredCode.trim() !== ACCESS_CODE) {
+      setSyncError('Code incorrect. Utilisez le code autorise pour acceder a cette action.');
+      return false;
+    }
+
+    return true;
+  }, []);
+
+  const secureAction = React.useCallback(
+    async (actionLabel: string, action: () => Promise<void> | void) => {
+      if (!requestActionCode(actionLabel)) {
+        return;
+      }
+
+      await action();
+    },
+    [requestActionCode]
+  );
+
+  const actionCardClass =
+    'group relative flex min-h-[5.9rem] min-w-[10.75rem] flex-col justify-between overflow-hidden rounded-[1.5rem] border px-4 py-3 text-left shadow-[0_20px_38px_-30px_rgba(15,23,42,0.35)] transition duration-300 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60';
+
   if (!mounted || (!hasLoadedServerSnapshot && isSyncing)) {
     return (
       <div className="relative min-h-screen bg-cover bg-center bg-fixed" style={{ backgroundImage: 'url("/BACK VIEW (1).png")' }}>
@@ -170,24 +201,29 @@ export default function DashboardPage() {
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-72 bg-[radial-gradient(circle_at_bottom,rgba(242,138,73,0.16),transparent_54%)]" />
 
       <div className="relative z-10 flex min-h-screen flex-col">
-        <header className="sticky top-0 z-50 border-b border-white/50 bg-white/72 shadow-[0_20px_40px_-32px_rgba(16,40,63,0.55)] backdrop-blur-xl">
-          <div className="mx-auto flex w-full max-w-[110rem] flex-wrap items-center justify-between gap-4 px-2 py-4 sm:px-4 lg:px-6">
-            <div className="flex items-center gap-4">
-              <div className="dashboard-logo-frame flex items-center gap-3 rounded-[1.4rem] px-4 py-3">
-                <div className="relative z-10 flex flex-col">
+        <header className="sticky top-0 z-50 border-b border-white/50 bg-white/78 shadow-[0_20px_40px_-32px_rgba(16,40,63,0.55)] backdrop-blur-xl">
+          <div className="mx-auto flex w-full max-w-[110rem] flex-col items-center gap-4 px-2 py-4 sm:px-4 lg:px-6">
+            <div className="flex w-full flex-col items-center justify-center gap-4 text-center lg:flex-row lg:items-center lg:justify-center lg:text-left">
+              <div className="dashboard-logo-frame relative flex items-center gap-3 overflow-hidden rounded-[1.6rem] border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(243,247,251,0.92))] px-5 py-4 shadow-[0_22px_48px_-34px_rgba(16,40,63,0.42)]">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(214,69,93,0.14),transparent_45%),radial-gradient(circle_at_bottom_right,rgba(18,48,71,0.12),transparent_48%)]" />
+                <div className="relative z-10 flex h-14 w-20 items-center justify-center rounded-[1.15rem] border border-white/90 bg-white/92 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_14px_26px_-22px_rgba(15,23,42,0.48)]">
                   <Image
                     src="/logo myc.jpg"
                     alt="MYC Beauty"
                     width={170}
                     height={48}
-                    className="mt-1 h-11 w-auto rounded-md object-contain drop-shadow-[0_8px_18px_rgba(19,48,77,0.16)]"
+                    className="h-10 w-auto rounded-md object-contain drop-shadow-[0_12px_20px_rgba(19,48,77,0.18)]"
                   />
+                </div>
+                <div className="relative z-10 flex flex-col">
+                  <p className="text-[10px] font-black uppercase tracking-[0.26em] text-slate-400">MYC identity</p>
+                  <p className="mt-1 text-sm font-black tracking-[0.04em] text-slate-800">Beauty Manufacturing</p>
                 </div>
               </div>
 
-              <div>
+              <div className="flex max-w-[36rem] flex-col items-center lg:items-start">
                 <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Manufacturing cockpit</p>
-                <h1 className="bg-[linear-gradient(135deg,#0d2237,#c53b53)] bg-clip-text text-2xl font-black leading-tight tracking-tight text-transparent">
+                <h1 className="bg-[linear-gradient(135deg,#0d2237,#c53b53)] bg-clip-text text-2xl font-black leading-tight tracking-tight text-transparent sm:text-[2rem]">
                   MYC Production Dashboard
                 </h1>
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -196,46 +232,82 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-stretch gap-3">
+            <div className="grid w-full max-w-[66rem] auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
               {productionData.length > 0 && (
-                <div className="dashboard-shell-panel flex flex-wrap items-center gap-3 rounded-[1.5rem] px-3 py-3">
-                  <div className="rounded-[1.1rem] border border-slate-200 bg-white px-3 py-2 shadow-[0_14px_30px_-28px_rgba(15,23,42,0.35)]">
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Base</p>
-                    <div className="mt-1 flex items-center gap-2">
+                <>
+                  <div className="dashboard-shell-panel flex min-h-[5.9rem] min-w-[10.75rem] flex-col justify-between rounded-[1.5rem] border border-white/60 px-4 py-3 shadow-[0_20px_38px_-30px_rgba(15,23,42,0.28)]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Base</p>
+                        <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Systeme central</p>
+                      </div>
                       <DatabaseZap className="h-4 w-4 text-[var(--dashboard-primary)]" />
-                      <span className="text-sm font-black text-slate-800">
+                    </div>
+                    <div className="flex items-end justify-between gap-3">
+                      <span className="text-base font-black text-slate-800">
                         {isResettingServer ? 'Reset...' : isRebuildingServer ? 'Sync...' : 'Active'}
+                      </span>
+                      <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-600">
+                        live
                       </span>
                     </div>
                   </div>
 
                   <button
-                    onClick={() => void rebuildServerSnapshot()}
+                    onClick={() => void secureAction('Recharger la base', rebuildServerSnapshot)}
                     disabled={isSyncing || isRebuildingServer || isResettingServer}
-                    className="inline-flex items-center rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-[0_18px_35px_-28px_rgba(15,23,42,0.35)] transition hover:-translate-y-0.5 hover:border-[var(--dashboard-accent-red)] hover:text-[var(--dashboard-accent-red-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                    className={`${actionCardClass} border-slate-200 bg-white hover:border-[var(--dashboard-accent-red)] hover:text-[var(--dashboard-accent-red-strong)]`}
                   >
-                    <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing || isRebuildingServer ? 'animate-spin' : ''}`} />
-                    Recharger
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Sync</p>
+                        <p className="mt-2 text-sm font-black text-slate-800">Recharger</p>
+                      </div>
+                      <RefreshCw className={`h-4 w-4 ${isSyncing || isRebuildingServer ? 'animate-spin' : ''}`} />
+                    </div>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                      Mise a jour serveur
+                    </span>
                   </button>
 
                   <button
-                    onClick={() => void resetServerSnapshot()}
+                    onClick={() => void secureAction('Reset de la base', resetServerSnapshot)}
                     disabled={isSyncing || isRebuildingServer || isResettingServer}
-                    className="inline-flex items-center rounded-[1.1rem] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-black text-rose-700 shadow-[0_18px_35px_-28px_rgba(212,69,93,0.42)] transition hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    className={`${actionCardClass} border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100`}
                   >
-                    <RotateCcw className={`mr-2 h-4 w-4 ${isResettingServer ? 'animate-spin' : ''}`} />
-                    Reset
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-400">Secure</p>
+                        <p className="mt-2 text-sm font-black">Reset</p>
+                      </div>
+                      <RotateCcw className={`h-4 w-4 ${isResettingServer ? 'animate-spin' : ''}`} />
+                    </div>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-400">
+                      Action protegee
+                    </span>
                   </button>
 
                   <DepartmentPdfExportButton data={productionData} />
-                </div>
+                </>
               )}
               <button
-                onClick={() => setIsImportModalOpen(true)}
-                className="flex items-center rounded-[1.2rem] bg-[linear-gradient(135deg,#d6455d,#b9344d)] px-5 py-3 text-sm font-black text-white shadow-[0_20px_42px_-18px_rgba(185,52,77,0.92)] transition hover:-translate-y-0.5 hover:brightness-105"
+                onClick={() =>
+                  void secureAction('Importer des donnees', () => {
+                    setIsImportModalOpen(true);
+                  })
+                }
+                className={`${actionCardClass} border-[#b9344d] bg-[linear-gradient(135deg,#d6455d,#b9344d)] text-white hover:brightness-105`}
               >
-                <FileSpreadsheet className="mr-2 h-4 w-4" />
-                Importer Daily Prod
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/70">Upload</p>
+                    <p className="mt-2 text-sm font-black">Importer Daily Prod</p>
+                  </div>
+                  <FileSpreadsheet className="h-4 w-4" />
+                </div>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/72">
+                  Acces securise
+                </span>
               </button>
             </div>
           </div>

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import React, { startTransition, useMemo, useState } from 'react';
 import { addDays, format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -8,6 +9,8 @@ import {
   ChevronLeft,
   ChevronRight,
   LineChart as LineChartIcon,
+  Maximize2,
+  X,
 } from 'lucide-react';
 import {
   Bar,
@@ -118,7 +121,7 @@ const roundUnits = (value: number) => Math.round(value);
 const formatNumber = (value: number) => new Intl.NumberFormat('fr-FR').format(roundUnits(value));
 const formatPercent = (value: number) => `${(value * 100).toFixed(1)}%`;
 const formatRatioPercent = (value: number) => `${(value * 100).toFixed(0)}%`;
-const getConformRate = (metrics: Metrics) => (metrics.actual > 0 ? metrics.conform / metrics.actual : 0);
+const getConformTargetRate = (metrics: Metrics) => (metrics.target > 0 ? metrics.conform / metrics.target : 0);
 const formatShortDate = (date: string) => {
   try {
     return format(parseISO(date), 'dd/MM', { locale: fr });
@@ -298,6 +301,22 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     SFG: 'ALL',
     FG: 'ALL',
   });
+  const [presentationView, setPresentationView] = useState<null | { groupKey: 'SFG' | 'FG'; panel: 'overview' | 'bars' | 'trend' }>(null);
+
+  React.useEffect(() => {
+    if (!presentationView) {
+      return;
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setPresentationView(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [presentationView]);
 
   const availableDates = useMemo(() => {
     const dates = new Set([...data.map((item) => item.date), ...subComponentsData.map((item) => item.date)]);
@@ -511,6 +530,151 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
   const getBinaryTextColor = (progress: number) => (progress >= 1 ? 'text-emerald-600' : 'text-rose-600');
   const getScrapTextColor = (scrapRate: number) => (scrapRate <= 0.1 ? 'text-emerald-600' : 'text-rose-600');
   const activeDateLabel = formatFullDate(activeDate);
+  const updateSelectedDepartment = (groupKey: 'SFG' | 'FG', department: string) => {
+    startTransition(() =>
+      setSelectedDepartmentByGroup((current) => ({
+        ...current,
+        [groupKey]: department,
+      }))
+    );
+  };
+
+  const renderDepartmentFilterCard = (
+    baseGroup: GroupSnapshot,
+    group: GroupSnapshot,
+    groupKey: 'SFG' | 'FG',
+    className = ''
+  ) => {
+    const selectedDepartment = selectedDepartmentByGroup[groupKey];
+    const activeZones = selectedDepartment === 'ALL' ? baseGroup.departments.length : 1;
+    const zoneLabel = activeZones > 1 ? 'zones' : 'zone';
+
+    return (
+      <div
+        className={`rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] sm:rounded-[1.7rem] sm:px-5 sm:py-5 ${className}`.trim()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Choix departement</p>
+            <h4 className="mt-2 text-lg font-black text-slate-950">Filtre</h4>
+          </div>
+          <span
+            className="inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em]"
+            style={{ borderColor: `${group.accent}33`, color: group.accent, backgroundColor: `${group.accent}10` }}
+          >
+            {activeZones} {zoneLabel}
+          </span>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            onClick={() => updateSelectedDepartment(groupKey, 'ALL')}
+            className={`rounded-full border px-3.5 py-2.5 text-xs font-black uppercase tracking-[0.08em] transition ${
+              selectedDepartmentByGroup[groupKey] === 'ALL'
+                ? 'text-white'
+                : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-white'
+            }`}
+            style={
+              selectedDepartmentByGroup[groupKey] === 'ALL'
+                ? { borderColor: group.accent, backgroundColor: group.accent }
+                : undefined
+            }
+          >
+            Tout {baseGroup.key}
+          </button>
+          {baseGroup.departments.map((department) => {
+            const isActive = selectedDepartmentByGroup[groupKey] === department;
+            return (
+              <button
+                key={`${baseGroup.key}-${department}`}
+                onClick={() => updateSelectedDepartment(groupKey, department)}
+                className={`rounded-full border px-3.5 py-2.5 text-xs font-black uppercase tracking-[0.08em] transition ${
+                  isActive
+                    ? 'text-white'
+                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-white'
+                }`}
+                style={isActive ? { borderColor: group.accent, backgroundColor: group.accent } : undefined}
+              >
+                {DEPARTMENT_LABELS[department] ?? department}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderInlineDepartmentFilter = (
+    baseGroup: GroupSnapshot,
+    group: GroupSnapshot,
+    groupKey: 'SFG' | 'FG',
+    compact = false
+  ) => (
+    <div className={`flex flex-wrap gap-2 ${compact ? 'mt-3' : 'mt-4'}`}>
+      <button
+        type="button"
+        onClick={() => updateSelectedDepartment(groupKey, 'ALL')}
+        className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] transition ${
+          selectedDepartmentByGroup[groupKey] === 'ALL'
+            ? 'text-white'
+            : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white'
+        }`}
+        style={
+          selectedDepartmentByGroup[groupKey] === 'ALL'
+            ? { borderColor: group.accent, backgroundColor: group.accent }
+            : undefined
+        }
+      >
+        Tout {baseGroup.key}
+      </button>
+      {baseGroup.departments.map((department) => {
+        const isActive = selectedDepartmentByGroup[groupKey] === department;
+
+        return (
+          <button
+            key={`${baseGroup.key}-${department}-inline`}
+            type="button"
+            onClick={() => updateSelectedDepartment(groupKey, department)}
+            className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] transition ${
+              isActive
+                ? 'text-white'
+                : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white'
+            }`}
+            style={isActive ? { borderColor: group.accent, backgroundColor: group.accent } : undefined}
+          >
+            {DEPARTMENT_LABELS[department] ?? department}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const renderBrandFrame = (compact = false) => (
+    <div
+      className={`relative overflow-hidden rounded-[1.35rem] border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(243,247,251,0.92))] shadow-[0_18px_40px_-32px_rgba(16,40,63,0.35)] ${
+        compact ? 'px-3 py-3' : 'px-4 py-4'
+      }`}
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(214,69,93,0.12),transparent_45%),radial-gradient(circle_at_bottom_right,rgba(18,48,71,0.12),transparent_48%)]" />
+      <div className={`relative z-10 flex ${compact ? 'items-center gap-3' : 'flex-col items-center gap-3 text-center sm:flex-row sm:text-left'}`}>
+        <div className={`flex items-center justify-center rounded-[1rem] border border-white/90 bg-white/92 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.45)] ${compact ? 'h-12 w-16' : 'h-14 w-20'}`}>
+          <Image
+            src="/logo myc.jpg"
+            alt="MYC Beauty"
+            width={120}
+            height={38}
+            className={`w-auto object-contain ${compact ? 'h-7' : 'h-8'}`}
+          />
+        </div>
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">MYC Beauty</p>
+          <p className={`mt-1 font-black tracking-[0.02em] text-slate-900 ${compact ? 'text-sm' : 'text-base'}`}>
+            Presentation cockpit
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 
   const currentWeek = activeDate ? getWeekMetadata(activeDate) : null;
   const orderedWeekKeys = useMemo(() => {
@@ -665,21 +829,39 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
             !selectedDepartment || selectedDepartment === 'ALL'
               ? `Tout ${baseGroup.key}`
               : DEPARTMENT_LABELS[selectedDepartment] ?? selectedDepartment;
-          const conformTone = getTone(getConformRate(group.day));
+          const conformTargetRate = getConformTargetRate(group.day);
+          const conformTone = getTone(conformTargetRate);
           const scrapTone = getScrapTone(group.day.scrapRate);
+          const isOverviewExpanded =
+            presentationView?.groupKey === groupKey && presentationView.panel === 'overview';
 
-          return (
-            <article
-              key={baseGroup.key}
-              className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_20px_48px_-40px_rgba(18,48,71,0.3)]"
-              style={{ boxShadow: getAccentShadow(group.accent) }}
-            >
-              <div className="p-4 sm:p-6">
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-                  <div
-                    className="rounded-[1.5rem] border p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] sm:rounded-[1.7rem] sm:p-6"
-                    style={{ borderColor: `${group.accent}22`, background: `linear-gradient(135deg, ${group.softAccent} 0%, #ffffff 92%)` }}
-                  >
+          const renderOverviewPanel = (expanded = false) => (
+            <div className={expanded ? 'p-2 sm:p-3' : 'p-4 sm:p-6'}>
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+                <div
+                  className={`rounded-[1.5rem] border p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] sm:rounded-[1.7rem] sm:p-6 ${
+                    expanded ? 'cursor-default' : 'cursor-zoom-in hover:-translate-y-1 transition duration-300'
+                  }`}
+                  style={{ borderColor: `${group.accent}22`, background: `linear-gradient(135deg, ${group.softAccent} 0%, #ffffff 92%)` }}
+                  onClick={
+                    expanded
+                      ? undefined
+                      : () => setPresentationView({ groupKey, panel: 'overview' })
+                  }
+                  role={expanded ? undefined : 'button'}
+                  tabIndex={expanded ? undefined : 0}
+                  onKeyDown={
+                    expanded
+                      ? undefined
+                      : (event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setPresentationView({ groupKey, panel: 'overview' });
+                          }
+                        }
+                  }
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-3">
                       <span
                         className="inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-white shadow-sm"
@@ -691,197 +873,182 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                         {selectedDepartmentLabel}
                       </span>
                     </div>
-
-                    <h3 className="mt-5 text-[2.3rem] font-black tracking-[-0.05em] text-slate-950">
-                      {group.title}
-                    </h3>
-                    <p className="mt-3 max-w-xl text-[15px] leading-7 text-slate-600">{baseGroup.subtitle}</p>
+                    {!expanded ? (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setPresentationView({ groupKey, panel: 'overview' });
+                        }}
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white/88 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-800"
+                        aria-label={`Agrandir ${group.title}`}
+                      >
+                        <Maximize2 className="h-4 w-4" />
+                      </button>
+                    ) : null}
                   </div>
 
-                  <div className="grid gap-4">
-                    <div className="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] sm:rounded-[1.7rem] sm:px-5 sm:py-5">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Choix departement</p>
-                          <h4 className="mt-2 text-lg font-black text-slate-950">Filtre</h4>
-                        </div>
-                        <span
-                          className="inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em]"
-                          style={{ borderColor: `${group.accent}33`, color: group.accent, backgroundColor: `${group.accent}10` }}
-                        >
-                          {group.departments.length} zones
-                        </span>
-                      </div>
-
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <button
-                          onClick={() => {
-                            startTransition(() =>
-                              setSelectedDepartmentByGroup((current) => ({
-                                ...current,
-                                [groupKey]: 'ALL',
-                              }))
-                            );
-                          }}
-                          className={`rounded-full border px-3.5 py-2.5 text-xs font-black uppercase tracking-[0.08em] transition ${
-                            selectedDepartmentByGroup[groupKey] === 'ALL'
-                              ? 'text-white'
-                              : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-white'
-                          }`}
-                          style={
-                            selectedDepartmentByGroup[groupKey] === 'ALL'
-                              ? { borderColor: group.accent, backgroundColor: group.accent }
-                              : undefined
-                          }
-                        >
-                          Tout {baseGroup.key}
-                        </button>
-                        {baseGroup.departments.map((department) => {
-                          const isActive = selectedDepartmentByGroup[groupKey] === department;
-                          return (
-                            <button
-                              key={`${baseGroup.key}-${department}`}
-                              onClick={() => {
-                                startTransition(() =>
-                                  setSelectedDepartmentByGroup((current) => ({
-                                    ...current,
-                                    [groupKey]: department,
-                                  }))
-                                );
-                              }}
-                              className={`rounded-full border px-3.5 py-2.5 text-xs font-black uppercase tracking-[0.08em] transition ${
-                                isActive
-                                  ? 'text-white'
-                                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-white'
-                              }`}
-                              style={isActive ? { borderColor: group.accent, backgroundColor: group.accent } : undefined}
-                            >
-                              {DEPARTMENT_LABELS[department] ?? department}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div
-                        className="rounded-[1.5rem] border bg-white px-4 py-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] sm:rounded-[1.7rem] sm:px-5 sm:py-5"
-                        style={{ borderColor: `${group.accent}22` }}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Conforme J-1</p>
-                          <span
-                            className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${getToneClasses(conformTone)}`}
-                          >
-                            {getStatusLabel(getConformRate(group.day))}
-                          </span>
-                        </div>
-                        <p className={`mt-5 text-[2.75rem] font-black tracking-[-0.05em] ${getMetricTextColor(getConformRate(group.day))}`}>
-                          {formatPercent(getConformRate(group.day))}
-                        </p>
-                        <div className="mt-5 flex items-end justify-between gap-3">
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Qte conforme</p>
-                            <p className="mt-1 text-[1.7rem] font-black tracking-[-0.04em] text-slate-900">{formatNumber(group.day.conform)}</p>
-                          </div>
-                          <p className="text-xs font-bold text-slate-500">sur {formatNumber(group.day.actual)}</p>
-                        </div>
-                      </div>
-
-                      <div
-                        className="rounded-[1.5rem] border bg-white px-4 py-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] sm:rounded-[1.7rem] sm:px-5 sm:py-5"
-                        style={{ borderColor: `${group.accent}22` }}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Rebut J-1</p>
-                          <span
-                            className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${getToneClasses(scrapTone)}`}
-                          >
-                            {group.day.scrapRate <= 0.1 ? 'maitrise' : 'critique'}
-                          </span>
-                        </div>
-                        <p className={`mt-5 text-[2.75rem] font-black tracking-[-0.05em] ${getScrapTextColor(group.day.scrapRate)}`}>
-                          {formatPercent(group.day.scrapRate)}
-                        </p>
-                        <div className="mt-5 flex items-end justify-between gap-3">
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Qte rebut</p>
-                            <p className={`mt-1 text-[1.7rem] font-black tracking-[-0.04em] ${getScrapTextColor(group.day.scrapRate)}`}>
-                              {formatNumber(group.day.scrap)}
-                            </p>
-                          </div>
-                          <p className="text-xs font-bold text-slate-500">sur {formatNumber(group.day.actual)}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <h3 className="mt-5 text-[2.3rem] font-black tracking-[-0.05em] text-slate-950">
+                    {group.title}
+                  </h3>
+                  <p className="mt-3 max-w-xl text-[15px] leading-7 text-slate-600">{baseGroup.subtitle}</p>
                 </div>
 
-                <div className="mt-4 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_18px_40px_-34px_rgba(15,23,42,0.16)] sm:mt-5 sm:rounded-[1.7rem]">
-                  <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Tableau unique</p>
-                      <h4 className="mt-1 text-lg font-black text-slate-950">Conforme et rebut</h4>
-                    </div>
-                    <span
-                      className="inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em]"
-                      style={{ borderColor: `${group.accent}33`, color: group.accent, backgroundColor: `${group.accent}10` }}
+                <div className="grid gap-4">
+                  {renderDepartmentFilterCard(baseGroup, group, groupKey)}
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div
+                      className="rounded-[1.5rem] border bg-white px-4 py-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] sm:rounded-[1.7rem] sm:px-5 sm:py-5"
+                      style={{ borderColor: `${group.accent}22` }}
                     >
-                      {selectedDepartmentLabel}
-                    </span>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <div className="min-w-[760px]">
-                      <div className="grid grid-cols-[92px_repeat(6,minmax(0,1fr))] bg-slate-50 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                        <div className="px-4 py-3">Periode</div>
-                        <div className="px-4 py-3">Objectif</div>
-                        <div className="px-4 py-3">Qte totale</div>
-                        <div className="px-4 py-3">Conforme</div>
-                        <div className="px-4 py-3">Rebut</div>
-                        <div className="px-4 py-3">% conforme</div>
-                        <div className="px-4 py-3">% rebut</div>
-                      </div>
-
-                      {[
-                        { label: 'J-1', metrics: group.day },
-                        { label: 'Cumul', metrics: group.cumulative },
-                      ].map((row) => (
-                        <div
-                          key={`${group.key}-${row.label}`}
-                          className="grid grid-cols-[92px_repeat(6,minmax(0,1fr))] border-t border-slate-200 text-sm odd:bg-white even:bg-slate-50/50"
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Conforme J-1</p>
+                        <span
+                          className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${getToneClasses(conformTone)}`}
                         >
-                          <div className="flex items-center px-4 py-4 font-black text-slate-900">{row.label}</div>
-                          <div className="px-4 py-4 font-semibold text-slate-700">{formatNumber(row.metrics.target)}</div>
-                          <div className={`px-4 py-4 font-black ${getBinaryTextColor(row.metrics.progress)}`}>
-                            {formatNumber(row.metrics.actual)}
-                          </div>
-                          <div className={`px-4 py-4 font-black ${getMetricTextColor(getConformRate(row.metrics))}`}>
-                            {formatNumber(row.metrics.conform)}
-                          </div>
-                          <div className={`px-4 py-4 font-black ${getScrapTextColor(row.metrics.scrapRate)}`}>
-                            {formatNumber(row.metrics.scrap)}
-                          </div>
-                          <div className="px-4 py-4">
-                            <span
-                              className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${getToneClasses(getTone(getConformRate(row.metrics)))}`}
-                            >
-                              {formatPercent(getConformRate(row.metrics))}
-                            </span>
-                          </div>
-                          <div className="px-4 py-4">
-                            <span
-                              className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${getToneClasses(getScrapTone(row.metrics.scrapRate))}`}
-                            >
-                              {formatPercent(row.metrics.scrapRate)}
-                            </span>
-                          </div>
+                          {getStatusLabel(conformTargetRate)}
+                        </span>
+                      </div>
+                      <p className={`mt-5 text-[2.75rem] font-black tracking-[-0.05em] ${getMetricTextColor(conformTargetRate)}`}>
+                        {formatPercent(conformTargetRate)}
+                      </p>
+                      <div className="mt-5 flex items-end justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Qte conforme</p>
+                          <p className="mt-1 text-[1.7rem] font-black tracking-[-0.04em] text-slate-900">{formatNumber(group.day.conform)}</p>
                         </div>
-                      ))}
+                        <p className="text-xs font-bold text-slate-500">sur {formatNumber(group.day.target)} target</p>
+                      </div>
+                    </div>
+
+                    <div
+                      className="rounded-[1.5rem] border bg-white px-4 py-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] sm:rounded-[1.7rem] sm:px-5 sm:py-5"
+                      style={{ borderColor: `${group.accent}22` }}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Rebut J-1</p>
+                        <span
+                          className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${getToneClasses(scrapTone)}`}
+                        >
+                          {group.day.scrapRate <= 0.1 ? 'maitrise' : 'critique'}
+                        </span>
+                      </div>
+                      <p className={`mt-5 text-[2.75rem] font-black tracking-[-0.05em] ${getScrapTextColor(group.day.scrapRate)}`}>
+                        {formatPercent(group.day.scrapRate)}
+                      </p>
+                      <div className="mt-5 flex items-end justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Qte rebut</p>
+                          <p className={`mt-1 text-[1.7rem] font-black tracking-[-0.04em] ${getScrapTextColor(group.day.scrapRate)}`}>
+                            {formatNumber(group.day.scrap)}
+                          </p>
+                        </div>
+                        <p className="text-xs font-bold text-slate-500">sur {formatNumber(group.day.actual)}</p>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
+
+              <div className="mt-4 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_18px_40px_-34px_rgba(15,23,42,0.16)] sm:mt-5 sm:rounded-[1.7rem]">
+                <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Tableau unique</p>
+                    <h4 className="mt-1 text-lg font-black text-slate-950">Conforme et rebut</h4>
+                  </div>
+                  <span
+                    className="inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em]"
+                    style={{ borderColor: `${group.accent}33`, color: group.accent, backgroundColor: `${group.accent}10` }}
+                  >
+                    {selectedDepartmentLabel}
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <div className={`${expanded ? 'min-w-[900px]' : 'min-w-[760px]'}`}>
+                    <div className="grid grid-cols-[92px_repeat(6,minmax(0,1fr))] bg-slate-50 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                      <div className="px-4 py-3">Periode</div>
+                      <div className="px-4 py-3">Objectif</div>
+                      <div className="px-4 py-3">Qte totale</div>
+                      <div className="px-4 py-3">Conforme</div>
+                      <div className="px-4 py-3">Rebut</div>
+                      <div className="px-4 py-3">% conforme</div>
+                      <div className="px-4 py-3">% rebut</div>
+                    </div>
+
+                    {[
+                      { label: 'J-1', metrics: group.day },
+                      { label: 'Cumul', metrics: group.cumulative },
+                    ].map((row) => (
+                      <div
+                        key={`${group.key}-${row.label}`}
+                        className="grid grid-cols-[92px_repeat(6,minmax(0,1fr))] border-t border-slate-200 text-sm odd:bg-white even:bg-slate-50/50"
+                      >
+                        <div className="flex items-center px-4 py-4 font-black text-slate-900">{row.label}</div>
+                        <div className="px-4 py-4 font-semibold text-slate-700">{formatNumber(row.metrics.target)}</div>
+                        <div className={`px-4 py-4 font-black ${getBinaryTextColor(row.metrics.progress)}`}>
+                          {formatNumber(row.metrics.actual)}
+                        </div>
+                        <div className={`px-4 py-4 font-black ${getMetricTextColor(getConformTargetRate(row.metrics))}`}>
+                          {formatNumber(row.metrics.conform)}
+                        </div>
+                        <div className={`px-4 py-4 font-black ${getScrapTextColor(row.metrics.scrapRate)}`}>
+                          {formatNumber(row.metrics.scrap)}
+                        </div>
+                        <div className="px-4 py-4">
+                          <span
+                            className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${getToneClasses(getTone(getConformTargetRate(row.metrics)))}`}
+                          >
+                            {formatPercent(getConformTargetRate(row.metrics))}
+                          </span>
+                        </div>
+                        <div className="px-4 py-4">
+                          <span
+                            className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${getToneClasses(getScrapTone(row.metrics.scrapRate))}`}
+                          >
+                            {formatPercent(row.metrics.scrapRate)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+
+          return (
+            <article
+              key={baseGroup.key}
+              className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_20px_48px_-40px_rgba(18,48,71,0.3)]"
+              style={{ boxShadow: getAccentShadow(group.accent) }}
+            >
+              {renderOverviewPanel()}
+
+              {isOverviewExpanded ? (
+                <div
+                  className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/72 p-4 backdrop-blur-md"
+                  onClick={() => setPresentationView(null)}
+                >
+                  <div
+                    className="relative w-full max-w-[96rem] rounded-[2rem] border border-white/20 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbfd_100%)] p-4 shadow-[0_45px_140px_-48px_rgba(15,23,42,0.68)] sm:p-6"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setPresentationView(null)}
+                        className="absolute right-2 top-2 inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white/92 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 sm:right-4 sm:top-4"
+                        aria-label="Fermer le mode presentation"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                    {renderOverviewPanel(true)}
+                  </div>
+                </div>
+              ) : null}
             </article>
           );
         })}
@@ -909,6 +1076,175 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
             : '';
           const visibleWeekTitle =
             weekBarsData.length > 0 ? weekBarsData.map((entry) => entry.slot).join(' ') : 'Aucune semaine';
+          const isWeekBarsExpanded =
+            presentationView?.groupKey === groupKey && presentationView.panel === 'bars';
+          const isTrendExpanded =
+            presentationView?.groupKey === groupKey && presentationView.panel === 'trend';
+
+          const renderWeekBarsPanel = (expanded = false) => (
+            <div
+              className={`rounded-[1.6rem] border border-slate-200 bg-white p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] transition duration-300 ${
+                expanded ? 'min-h-[36rem]' : 'cursor-zoom-in hover:-translate-y-1'
+              }`}
+              onClick={
+                expanded
+                  ? undefined
+                  : () => setPresentationView({ groupKey, panel: 'bars' })
+              }
+              role={expanded ? undefined : 'button'}
+              tabIndex={expanded ? undefined : 0}
+              onKeyDown={
+                expanded
+                  ? undefined
+                  : (event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setPresentationView({ groupKey, panel: 'bars' });
+                      }
+                    }
+              }
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Semaines recentes</p>
+                  <h4 className="mt-1 text-xl font-black tracking-[-0.03em] text-slate-950">{visibleWeekTitle}</h4>
+                </div>
+                {!expanded ? (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setPresentationView({ groupKey, panel: 'bars' });
+                    }}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-800"
+                    aria-label="Agrandir la vue des semaines recentes"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[var(--dashboard-neutral-strong)]" />
+                  Target
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  Realise bon
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
+                  Realise sous target
+                </span>
+              </div>
+              <div className={`mt-4 ${expanded ? 'h-[28rem]' : 'h-[17rem]'}`}>
+                <div className={`mx-auto h-full w-full ${expanded ? 'max-w-none' : 'max-w-[42rem]'}`}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={weekBarsData} margin={{ top: 18, right: 8, left: 0, bottom: 0 }} barGap={4} barCategoryGap="36%">
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--dashboard-grid)" />
+                      <XAxis dataKey="slot" tick={{ fontSize: expanded ? 14 : 12, fill: '#475569' }} axisLine={false} tickLine={false} />
+                      <YAxis
+                        tick={{ fontSize: expanded ? 14 : 12, fill: '#475569' }}
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(value) => formatNumber(Number(value))}
+                      />
+                      <RechartsTooltip
+                        formatter={(value, name, payload) => {
+                          const row = payload?.payload;
+                          if (name === 'Target') return [formatNumber(Number(value)), `Perf ${row?.percentLabel ?? '-'}`];
+                          return [formatNumber(Number(value)), `Perf ${row?.percentLabel ?? '-'}`];
+                        }}
+                        labelFormatter={(label, payload) => {
+                          const week = payload?.[0]?.payload?.week;
+                          const range = payload?.[0]?.payload?.rangeLabel;
+                          return week ? `${label} - ${week}${range ? ` (${range})` : ''}` : label;
+                        }}
+                      />
+                      <Bar dataKey="target" name="OBJ" fill="var(--dashboard-neutral-strong)" radius={[10, 10, 0, 0]} barSize={expanded ? 42 : 30} />
+                      <Bar dataKey="actual" name="Realise" radius={[10, 10, 0, 0]} barSize={expanded ? 42 : 30}>
+                        {weekBarsData.map((entry) => (
+                          <Cell key={`${group.key}-${entry.slot}`} fill={getTone(entry.progress) === 'green' ? '#1f9d55' : getTone(entry.progress) === 'orange' ? '#f59e0b' : '#e11d48'} />
+                        ))}
+                        <LabelList
+                          dataKey="percentLabel"
+                          position="top"
+                          className="fill-slate-700"
+                          style={{ fontSize: expanded ? 15 : 13, fontWeight: 900 }}
+                        />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          );
+
+          const renderTrendPanel = (expanded = false) => (
+            <div
+              className={`rounded-[1.6rem] border border-slate-200 bg-white p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] transition duration-300 ${
+                expanded ? 'min-h-[38rem]' : 'cursor-zoom-in hover:-translate-y-1'
+              }`}
+              onClick={
+                expanded
+                  ? undefined
+                  : () => setPresentationView({ groupKey, panel: 'trend' })
+              }
+              role={expanded ? undefined : 'button'}
+              tabIndex={expanded ? undefined : 0}
+              onKeyDown={
+                expanded
+                  ? undefined
+                  : (event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setPresentationView({ groupKey, panel: 'trend' });
+                      }
+                    }
+              }
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Courbe semaine active</p>
+                  <h4 className="mt-1 text-xl font-black tracking-[-0.03em] text-slate-950">{currentWeekLabel} - Objectif et realise</h4>
+                  <p className={`mt-2 text-base font-black ${getMetricTextColor(activeWeekProgress)}`}>
+                    {activeWeekActual >= activeWeekTarget ? 'Sur target' : 'Sous target'} - {formatPercent(activeWeekProgress)}
+                  </p>
+                  {renderInlineDepartmentFilter(baseGroup, group, groupKey, true)}
+                </div>
+                {!expanded ? (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setPresentationView({ groupKey, panel: 'trend' });
+                    }}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-800"
+                    aria-label="Agrandir la courbe de la semaine active"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[var(--dashboard-neutral-strong)]" />
+                  Objectif
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  Point vert {'>='} target
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
+                  Point rouge {'<'} target
+                </span>
+              </div>
+              <div className={`mt-5 ${expanded ? 'h-[30rem]' : 'h-[22rem]'}`}>
+                <SimpleWeeklyTrendChart data={dailyCurveData} />
+              </div>
+            </div>
+          );
 
           return (
             <article
@@ -930,12 +1266,20 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                     </h3>
                   </div>
                 </div>
+
+                <div className="hidden lg:block lg:min-w-[16rem]">
+                  {renderBrandFrame(true)}
+                </div>
               </div>
 
               <div
                 className="mt-4 overflow-hidden rounded-[1.6rem] border border-slate-200 p-4 shadow-[0_18px_44px_-34px_rgba(15,23,42,0.25)] sm:mt-5 sm:rounded-[1.8rem]"
                 style={{ background: `linear-gradient(180deg,#ffffff 0%, ${group.softAccent} 100%)` }}
               >
+                <div className="mb-4">
+                  {renderDepartmentFilterCard(baseGroup, group, groupKey, 'border-white/70 bg-white/88 backdrop-blur-sm')}
+                </div>
+
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Lecture croquis</p>
@@ -946,9 +1290,12 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                     {currentWeekRange ? <p className="mt-1 text-xs font-semibold text-slate-500">{currentWeekRange}</p> : null}
                   </div>
 
-                  <div className="flex flex-wrap gap-3">
+                  <div className="grid w-full max-w-[34rem] grid-cols-2 gap-3 sm:grid-cols-3 xl:w-auto xl:grid-cols-5">
                     {weekBarsData.map((entry) => (
-                      <div key={`${group.key}-${entry.slot}-summary`} className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-center shadow-sm">
+                      <div
+                        key={`${group.key}-${entry.slot}-summary`}
+                        className="flex min-h-[5.2rem] flex-col justify-between rounded-2xl border border-slate-200 bg-white/92 px-4 py-3 text-center shadow-[0_16px_32px_-26px_rgba(15,23,42,0.24)]"
+                      >
                         <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{entry.slot}</p>
                         <p className={`mt-1 text-xl font-black tracking-[-0.03em] ${getMetricTextColor(entry.progress)}`}>{entry.percentLabel}</p>
                         <p className="mt-1 text-[11px] font-semibold text-slate-500">{entry.rangeLabel}</p>
@@ -958,91 +1305,34 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 gap-5">
-                  <div className="rounded-[1.6rem] border border-slate-200 bg-white p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)]">
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Semaines recentes</p>
-                    <h4 className="mt-1 text-xl font-black tracking-[-0.03em] text-slate-950">{visibleWeekTitle}</h4>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">
-                        <span className="h-2.5 w-2.5 rounded-full bg-[var(--dashboard-neutral-strong)]" />
-                        Target
-                      </span>
-                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">
-                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                        Realise bon
-                      </span>
-                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">
-                        <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
-                        Realise sous target
-                      </span>
-                    </div>
-                    <div className="mt-4 h-[17rem]">
-                      <div className="mx-auto h-full w-full max-w-[42rem]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={weekBarsData} margin={{ top: 18, right: 8, left: 0, bottom: 0 }} barGap={4} barCategoryGap="36%">
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--dashboard-grid)" />
-                          <XAxis dataKey="slot" tick={{ fontSize: 12, fill: '#475569' }} axisLine={false} tickLine={false} />
-                          <YAxis
-                            tick={{ fontSize: 12, fill: '#475569' }}
-                            axisLine={false}
-                            tickLine={false}
-                            tickFormatter={(value) => formatNumber(Number(value))}
-                          />
-                          <RechartsTooltip
-                            formatter={(value, name, payload) => {
-                              const row = payload?.payload;
-                              if (name === 'Target') return [formatNumber(Number(value)), `Perf ${row?.percentLabel ?? '-'}`];
-                              return [formatNumber(Number(value)), `Perf ${row?.percentLabel ?? '-'}`];
-                            }}
-                            labelFormatter={(label, payload) => {
-                              const week = payload?.[0]?.payload?.week;
-                              const range = payload?.[0]?.payload?.rangeLabel;
-                              return week ? `${label} - ${week}${range ? ` (${range})` : ''}` : label;
-                            }}
-                          />
-                          <Bar dataKey="target" name="OBJ" fill="var(--dashboard-neutral-strong)" radius={[10, 10, 0, 0]} barSize={30} />
-                          <Bar dataKey="actual" name="Realise" radius={[10, 10, 0, 0]} barSize={30}>
-                            {weekBarsData.map((entry) => (
-                              <Cell key={`${group.key}-${entry.slot}`} fill={getTone(entry.progress) === 'green' ? '#1f9d55' : getTone(entry.progress) === 'orange' ? '#f59e0b' : '#e11d48'} />
-                            ))}
-                            <LabelList
-                              dataKey="percentLabel"
-                              position="top"
-                              className="fill-slate-700"
-                              style={{ fontSize: 13, fontWeight: 900 }}
-                            />
-                          </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-[1.6rem] border border-slate-200 bg-white p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)]">
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Courbe semaine active</p>
-                    <h4 className="mt-1 text-xl font-black tracking-[-0.03em] text-slate-950">{currentWeekLabel} - Objectif et realise</h4>
-                    <p className={`mt-2 text-base font-black ${getMetricTextColor(activeWeekProgress)}`}>
-                      {activeWeekActual >= activeWeekTarget ? 'Sur target' : 'Sous target'} - {formatPercent(activeWeekProgress)}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">
-                        <span className="h-2.5 w-2.5 rounded-full bg-[var(--dashboard-neutral-strong)]" />
-                        Objectif
-                      </span>
-                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">
-                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                        Point vert {'>='} target
-                      </span>
-                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">
-                        <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
-                        Point rouge {'<'} target
-                      </span>
-                    </div>
-                    <div className="mt-5 h-[22rem]">
-                      <SimpleWeeklyTrendChart data={dailyCurveData} />
-                    </div>
-                  </div>
+                  {renderWeekBarsPanel()}
+                  {renderTrendPanel()}
                 </div>
               </div>
+
+              {isWeekBarsExpanded || isTrendExpanded ? (
+                <div
+                  className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/72 p-4 backdrop-blur-md"
+                  onClick={() => setPresentationView(null)}
+                >
+                  <div
+                    className="relative w-full max-w-[92rem] rounded-[2rem] border border-white/20 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbfd_100%)] p-4 shadow-[0_45px_140px_-48px_rgba(15,23,42,0.68)] sm:p-6"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setPresentationView(null)}
+                        className="absolute right-2 top-2 inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white/92 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 sm:right-4 sm:top-4"
+                        aria-label="Fermer le mode presentation"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                    {isWeekBarsExpanded ? renderWeekBarsPanel(true) : renderTrendPanel(true)}
+                  </div>
+                </div>
+              ) : null}
             </article>
           );
         })}

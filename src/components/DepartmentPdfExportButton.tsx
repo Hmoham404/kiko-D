@@ -265,24 +265,35 @@ export const DepartmentPdfExportButton: React.FC<DepartmentPdfExportButtonProps>
   };
 
   return (
-    <div className="flex flex-col items-end gap-2">
+    <div className="flex flex-col gap-2">
       <button
         type="button"
         onClick={handleExport}
         disabled={reports.length === 0 || isExporting}
-        className="group relative inline-flex items-center rounded-[1.1rem] border border-slate-200/90 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-[0_18px_35px_-28px_rgba(15,23,42,0.35)] transition hover:-translate-y-0.5 hover:border-[var(--dashboard-accent-red)] hover:text-[var(--dashboard-accent-red-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+        className="group relative flex min-h-[5.9rem] min-w-[10.75rem] flex-col justify-between overflow-hidden rounded-[1.5rem] border border-slate-200/90 bg-white px-4 py-3 text-left text-slate-700 shadow-[0_20px_38px_-30px_rgba(15,23,42,0.35)] transition duration-300 hover:-translate-y-0.5 hover:border-[var(--dashboard-accent-red)] hover:text-[var(--dashboard-accent-red-strong)] disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <FileDown className="mr-2 h-4 w-4" />
-        {isExporting ? 'Preparation PDF...' : 'Exporter PDF'}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Rapport</p>
+            <p className="mt-2 text-sm font-black text-slate-800">
+              {isExporting ? 'Preparation PDF...' : 'Exporter PDF'}
+            </p>
+          </div>
+          <FileDown className="h-4 w-4" />
+        </div>
+        <div className="flex items-end justify-between gap-3">
+          <p className="max-w-[9rem] text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            Fichier telecharge directement
+          </p>
+          <span className="inline-flex rounded-full border border-slate-200/80 bg-white/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+            Direct
+          </span>
+        </div>
       </button>
 
       {exportError ? (
-        <p className="max-w-xs text-right text-xs font-semibold text-rose-600">{exportError}</p>
-      ) : (
-        <p className="max-w-[14rem] text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-          Fichier PDF telecharge directement
-        </p>
-      )}
+        <p className="max-w-[12rem] text-xs font-semibold text-rose-600">{exportError}</p>
+      ) : null}
     </div>
   );
 };
