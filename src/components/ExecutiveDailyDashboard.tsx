@@ -1,15 +1,14 @@
 'use client';
 
-import Image from 'next/image';
 import React, { startTransition, useMemo, useState } from 'react';
 import { addDays, format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
+  BadgeCheck,
   LineChart as LineChartIcon,
   Maximize2,
+  ShieldCheck,
+  TriangleAlert,
   X,
 } from 'lucide-react';
 import {
@@ -29,6 +28,8 @@ import { ProductionData, SubComponentData, useStore } from '@/store/useStore';
 interface ExecutiveDailyDashboardProps {
   data: ProductionData[];
   subComponentsData: SubComponentData[];
+  availableDates: string[];
+  selectedDate: string;
 }
 
 type Metrics = {
@@ -140,14 +141,6 @@ const roundChartMax = (value: number) => {
   return 10 * magnitude;
 };
 
-const formatFullDate = (date: string) => {
-  try {
-    return format(parseISO(date), 'EEEE dd MMMM yyyy', { locale: fr });
-  } catch {
-    return date;
-  }
-};
-
 const buildMetrics = (target: number, actual: number, conform: number, scrap: number): Metrics => ({
   target: roundUnits(target),
   actual: roundUnits(actual),
@@ -174,12 +167,6 @@ const getToneClasses = (tone: 'green' | 'orange' | 'red') => {
     return 'border-amber-200 bg-amber-50 text-amber-800';
   }
   return 'border-rose-200 bg-rose-50 text-rose-800';
-};
-
-const getStatusLabel = (progress: number) => {
-  if (progress > 0.95) return 'vert';
-  if (progress >= 0.85) return 'a surveiller';
-  return 'action';
 };
 
 const getAccentShadow = (accent: string) => `0 28px 64px -42px ${accent}55`;
@@ -295,7 +282,12 @@ const SimpleWeeklyTrendChart: React.FC<{ data: DailyCurvePoint[] }> = ({ data })
   );
 };
 
-export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = ({ data, subComponentsData }) => {
+export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = ({
+  data,
+  subComponentsData,
+  availableDates,
+  selectedDate,
+}) => {
   const weeklyTargets = useStore((state) => state.weeklyTargets);
   const [selectedDepartmentByGroup, setSelectedDepartmentByGroup] = useState<Record<'SFG' | 'FG', string>>({
     SFG: 'ALL',
@@ -317,11 +309,6 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, [presentationView]);
-
-  const availableDates = useMemo(() => {
-    const dates = new Set([...data.map((item) => item.date), ...subComponentsData.map((item) => item.date)]);
-    return Array.from(dates).filter(Boolean).sort();
-  }, [data, subComponentsData]);
 
   const injectionSeries = useMemo(() => {
     return availableDates
@@ -364,16 +351,9 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     return Array.from(items.values()).sort((a, b) => a.date.localeCompare(b.date) || a.department.localeCompare(b.department));
   }, [data, injectionSeries]);
 
-  const [selectedDate, setSelectedDate] = useState<string>(
-    availableDates.length > 0 ? availableDates[availableDates.length - 1] : ''
-  );
-
   const activeDate = availableDates.includes(selectedDate)
     ? selectedDate
     : availableDates[availableDates.length - 1] ?? '';
-  const activeDateIndex = availableDates.indexOf(activeDate);
-  const canGoToPreviousDate = activeDateIndex > 0;
-  const canGoToNextDate = activeDateIndex >= 0 && activeDateIndex < availableDates.length - 1;
 
   const getDepartmentSeries = (department: string) => normalizedData.filter((item) => item.department === department);
 
@@ -504,11 +484,6 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     cumulative: getGroupMetrics(group, getDepartmentImportedMetrics, activeDate),
   }));
 
-  const plantGroup = groupSnapshots.find((group) => group.key === 'PLANT') ?? {
-    ...GROUPS[0],
-    day: EMPTY_METRICS,
-    cumulative: EMPTY_METRICS,
-  };
   const sfgGroup = groupSnapshots.find((group) => group.key === 'SFG') ?? {
     ...GROUPS[1],
     day: EMPTY_METRICS,
@@ -529,7 +504,6 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
 
   const getBinaryTextColor = (progress: number) => (progress >= 1 ? 'text-emerald-600' : 'text-rose-600');
   const getScrapTextColor = (scrapRate: number) => (scrapRate <= 0.1 ? 'text-emerald-600' : 'text-rose-600');
-  const activeDateLabel = formatFullDate(activeDate);
   const updateSelectedDepartment = (groupKey: 'SFG' | 'FG', department: string) => {
     startTransition(() =>
       setSelectedDepartmentByGroup((current) => ({
@@ -552,6 +526,8 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     return (
       <div
         className={`rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] sm:rounded-[1.7rem] sm:px-5 sm:py-5 ${className}`.trim()}
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -568,6 +544,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
 
         <div className="mt-4 flex flex-wrap gap-2">
           <button
+            type="button"
             onClick={() => updateSelectedDepartment(groupKey, 'ALL')}
             className={`rounded-full border px-3.5 py-2.5 text-xs font-black uppercase tracking-[0.08em] transition ${
               selectedDepartmentByGroup[groupKey] === 'ALL'
@@ -587,6 +564,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
             return (
               <button
                 key={`${baseGroup.key}-${department}`}
+                type="button"
                 onClick={() => updateSelectedDepartment(groupKey, department)}
                 className={`rounded-full border px-3.5 py-2.5 text-xs font-black uppercase tracking-[0.08em] transition ${
                   isActive
@@ -610,7 +588,11 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     groupKey: 'SFG' | 'FG',
     compact = false
   ) => (
-    <div className={`flex flex-wrap gap-2 ${compact ? 'mt-3' : 'mt-4'}`}>
+    <div
+      className={`flex flex-wrap gap-2 ${compact ? 'mt-3' : 'mt-4'}`}
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
       <button
         type="button"
         onClick={() => updateSelectedDepartment(groupKey, 'ALL')}
@@ -646,33 +628,6 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
           </button>
         );
       })}
-    </div>
-  );
-
-  const renderBrandFrame = (compact = false) => (
-    <div
-      className={`relative overflow-hidden rounded-[1.35rem] border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(243,247,251,0.92))] shadow-[0_18px_40px_-32px_rgba(16,40,63,0.35)] ${
-        compact ? 'px-3 py-3' : 'px-4 py-4'
-      }`}
-    >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(214,69,93,0.12),transparent_45%),radial-gradient(circle_at_bottom_right,rgba(18,48,71,0.12),transparent_48%)]" />
-      <div className={`relative z-10 flex ${compact ? 'items-center gap-3' : 'flex-col items-center gap-3 text-center sm:flex-row sm:text-left'}`}>
-        <div className={`flex items-center justify-center rounded-[1rem] border border-white/90 bg-white/92 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.45)] ${compact ? 'h-12 w-16' : 'h-14 w-20'}`}>
-          <Image
-            src="/logo myc.jpg"
-            alt="MYC Beauty"
-            width={120}
-            height={38}
-            className={`w-auto object-contain ${compact ? 'h-7' : 'h-8'}`}
-          />
-        </div>
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">MYC Beauty</p>
-          <p className={`mt-1 font-black tracking-[0.02em] text-slate-900 ${compact ? 'text-sm' : 'text-base'}`}>
-            Presentation cockpit
-          </p>
-        </div>
-      </div>
     </div>
   );
 
@@ -730,96 +685,6 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <section className="relative overflow-hidden rounded-[1.8rem] border border-slate-200 p-4 shadow-[0_32px_90px_-52px_rgba(18,48,71,0.58)] sm:rounded-[2.2rem] sm:p-6">
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: 'url("/BACK VIEW (1).png")' }}
-        />
-        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(247,251,253,0.92)_0%,rgba(238,244,247,0.9)_42%,rgba(255,247,241,0.9)_100%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(18,48,71,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(18,48,71,0.05)_1px,transparent_1px)] bg-[size:32px_32px] opacity-40" />
-        <div className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-[#d86f3d]/12 blur-3xl" />
-        <div className="absolute -bottom-24 left-1/3 h-56 w-56 rounded-full bg-[#1e6f73]/12 blur-3xl" />
-
-        <div className="relative flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-4xl">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="inline-flex rounded-full border border-slate-300 bg-white/92 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-slate-500 shadow-sm">
-                Dashboard DG
-              </span>
-              <span className="inline-flex rounded-full bg-[#123047] px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-white shadow-sm">
-                {plantGroup.alias}
-              </span>
-              <span className="inline-flex rounded-full border border-white/80 bg-white/88 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 shadow-sm">
-                Performance usine
-              </span>
-            </div>
-
-            <h2 className="mt-4 max-w-4xl text-[2.1rem] font-black leading-[1.02] tracking-tight text-slate-950 sm:text-5xl">
-              Cockpit journalier de performance usine, lecture du jour et du cumul FG / SFG.
-            </h2>
-            <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-600 sm:text-[15px]">
-              Une vue DG plus propre pour piloter la production, suivre le niveau de performance, lire les ecarts et
-              comparer rapidement SFG / PSF et FG / PF.
-            </p>
-          </div>
-
-          <div className="grid gap-3 xl:min-w-[24rem]">
-            <div className="rounded-[1.7rem] border border-slate-200 bg-white/94 px-5 py-5 shadow-[0_24px_54px_-34px_rgba(18,48,71,0.32)] backdrop-blur">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Date de lecture</span>
-                  <p className="mt-2 text-base font-bold capitalize text-slate-700">{activeDateLabel}</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-[#123047]">
-                  <CalendarDays className="h-5 w-5" />
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[1.4rem] border border-slate-200 bg-slate-50/90 p-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!canGoToPreviousDate) return;
-                    startTransition(() => setSelectedDate(availableDates[activeDateIndex - 1]));
-                  }}
-                  disabled={!canGoToPreviousDate}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition enabled:hover:border-slate-300 enabled:hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <ChevronLeft className="h-5 w-5" />
-                </button>
-
-                <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                  <CalendarDays className="h-4 w-4 text-slate-500" />
-                  <input
-                    type="date"
-                    value={activeDate}
-                    min={availableDates[0]}
-                    max={availableDates[availableDates.length - 1]}
-                    onChange={(event) => {
-                      const nextValue = event.target.value;
-                      startTransition(() => setSelectedDate(nextValue));
-                    }}
-                    className="w-full bg-transparent text-sm font-bold text-slate-800 outline-none"
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!canGoToNextDate) return;
-                    startTransition(() => setSelectedDate(availableDates[activeDateIndex + 1]));
-                  }}
-                  disabled={!canGoToNextDate}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition enabled:hover:border-slate-300 enabled:hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <ChevronRight className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2 xl:gap-6">
         {[sfgGroup, fgGroup].map((baseGroup) => {
           const groupKey = baseGroup.key as 'SFG' | 'FG';
@@ -829,20 +694,50 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
             !selectedDepartment || selectedDepartment === 'ALL'
               ? `Tout ${baseGroup.key}`
               : DEPARTMENT_LABELS[selectedDepartment] ?? selectedDepartment;
+          const activeZones = selectedDepartment === 'ALL' ? baseGroup.departments.length : 1;
           const conformTargetRate = getConformTargetRate(group.day);
-          const conformTone = getTone(conformTargetRate);
-          const scrapTone = getScrapTone(group.day.scrapRate);
           const isOverviewExpanded =
             presentationView?.groupKey === groupKey && presentationView.panel === 'overview';
+          const overviewMetricCards = [
+            {
+              key: 'conformRate',
+              label: 'QTE / OBJECTIF',
+              value: formatPercent(conformTargetRate),
+              tone: getMetricTextColor(conformTargetRate),
+              icon: ShieldCheck,
+              iconClass: 'text-emerald-500',
+            },
+            {
+              key: 'scrapRate',
+              label: 'Rebut J-1',
+              value: formatPercent(group.day.scrapRate),
+              tone: getScrapTextColor(group.day.scrapRate),
+              icon: TriangleAlert,
+              iconClass: 'text-rose-500',
+            },
+            {
+              key: 'conformQty',
+              label: 'Qte Conforme',
+              value: formatNumber(group.day.conform),
+              tone: 'text-emerald-600',
+              icon: BadgeCheck,
+              iconClass: 'text-emerald-500',
+            },
+            {
+              key: 'scrapQty',
+              label: 'Qte Rebut',
+              value: formatNumber(group.day.scrap),
+              tone: 'text-rose-600',
+            },
+          ];
 
           const renderOverviewPanel = (expanded = false) => (
-            <div className={expanded ? 'p-2 sm:p-3' : 'p-4 sm:p-6'}>
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+            <div className={expanded ? 'p-2 sm:p-3' : 'p-3 sm:p-4'}>
+              <div className="rounded-[1.6rem] border border-slate-200 bg-[linear-gradient(135deg,#effbfd_0%,#ffffff_82%)] p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] sm:p-5">
                 <div
-                  className={`rounded-[1.5rem] border p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] sm:rounded-[1.7rem] sm:p-6 ${
+                  className={`${
                     expanded ? 'cursor-default' : 'cursor-zoom-in hover:-translate-y-1 transition duration-300'
                   }`}
-                  style={{ borderColor: `${group.accent}22`, background: `linear-gradient(135deg, ${group.softAccent} 0%, #ffffff 92%)` }}
                   onClick={
                     expanded
                       ? undefined
@@ -861,98 +756,85 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                         }
                   }
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span
-                        className="inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-white shadow-sm"
-                        style={{ backgroundColor: group.accent }}
-                      >
-                        {group.alias}
-                      </span>
-                      <span className="inline-flex rounded-full border border-white/80 bg-white/88 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 shadow-sm">
-                        {selectedDepartmentLabel}
-                      </span>
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className="inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-white shadow-sm"
+                          style={{ backgroundColor: group.accent }}
+                        >
+                          {group.alias}
+                        </span>
+                        <span className="inline-flex rounded-full border border-white/80 bg-white/88 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 shadow-sm">
+                          {selectedDepartmentLabel}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="text-[1.9rem] font-black tracking-[-0.05em] text-slate-950 sm:text-[2.2rem]">
+                            {group.title}
+                          </h3>
+                          <p className="mt-2 max-w-xl text-[13px] leading-6 text-slate-600">{baseGroup.subtitle}</p>
+                        </div>
+                        {!expanded ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setPresentationView({ groupKey, panel: 'overview' });
+                            }}
+                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white/88 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-800"
+                            aria-label={`Agrandir ${group.title}`}
+                          >
+                            <Maximize2 className="h-4 w-4" />
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
-                    {!expanded ? (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setPresentationView({ groupKey, panel: 'overview' });
-                        }}
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white/88 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-800"
-                        aria-label={`Agrandir ${group.title}`}
-                      >
-                        <Maximize2 className="h-4 w-4" />
-                      </button>
-                    ) : null}
+
+                    <div className="w-full xl:max-w-[28rem]">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Choix departement</p>
+                          <h4 className="mt-1 text-lg font-black text-slate-950">Filtre</h4>
+                        </div>
+                        <span
+                          className="inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em]"
+                          style={{ borderColor: `${group.accent}33`, color: group.accent, backgroundColor: `${group.accent}10` }}
+                        >
+                          {activeZones} {activeZones > 1 ? 'zones' : 'zone'}
+                        </span>
+                      </div>
+                      {renderInlineDepartmentFilter(baseGroup, group, groupKey, true)}
+                    </div>
                   </div>
 
-                  <h3 className="mt-5 text-[2.3rem] font-black tracking-[-0.05em] text-slate-950">
-                    {group.title}
-                  </h3>
-                  <p className="mt-3 max-w-xl text-[15px] leading-7 text-slate-600">{baseGroup.subtitle}</p>
-                </div>
-
-                <div className="grid gap-4">
-                  {renderDepartmentFilterCard(baseGroup, group, groupKey)}
-
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div
-                      className="rounded-[1.5rem] border bg-white px-4 py-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] sm:rounded-[1.7rem] sm:px-5 sm:py-5"
-                      style={{ borderColor: `${group.accent}22` }}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Conforme J-1</p>
-                        <span
-                          className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${getToneClasses(conformTone)}`}
+                  <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
+                    {overviewMetricCards.map((card) => {
+                      return (
+                        <div
+                          key={card.key}
+                          className="flex min-h-[6.2rem] flex-col justify-between rounded-[1rem] border border-white/90 bg-white/92 px-3 py-3 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.22)]"
                         >
-                          {getStatusLabel(conformTargetRate)}
-                        </span>
-                      </div>
-                      <p className={`mt-5 text-[2.75rem] font-black tracking-[-0.05em] ${getMetricTextColor(conformTargetRate)}`}>
-                        {formatPercent(conformTargetRate)}
-                      </p>
-                      <div className="mt-5 flex items-end justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Qte conforme</p>
-                          <p className="mt-1 text-[1.7rem] font-black tracking-[-0.04em] text-slate-900">{formatNumber(group.day.conform)}</p>
-                        </div>
-                        <p className="text-xs font-bold text-slate-500">sur {formatNumber(group.day.target)} target</p>
-                      </div>
-                    </div>
-
-                    <div
-                      className="rounded-[1.5rem] border bg-white px-4 py-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] sm:rounded-[1.7rem] sm:px-5 sm:py-5"
-                      style={{ borderColor: `${group.accent}22` }}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Rebut J-1</p>
-                        <span
-                          className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${getToneClasses(scrapTone)}`}
-                        >
-                          {group.day.scrapRate <= 0.1 ? 'maitrise' : 'critique'}
-                        </span>
-                      </div>
-                      <p className={`mt-5 text-[2.75rem] font-black tracking-[-0.05em] ${getScrapTextColor(group.day.scrapRate)}`}>
-                        {formatPercent(group.day.scrapRate)}
-                      </p>
-                      <div className="mt-5 flex items-end justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Qte rebut</p>
-                          <p className={`mt-1 text-[1.7rem] font-black tracking-[-0.04em] ${getScrapTextColor(group.day.scrapRate)}`}>
-                            {formatNumber(group.day.scrap)}
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">
+                              {card.label}
+                            </p>
+                            {card.icon ? <card.icon className={`h-4 w-4 shrink-0 ${card.iconClass}`} /> : null}
+                          </div>
+                          <p className={`text-[1.65rem] font-black tracking-[-0.04em] ${card.tone}`}>
+                            {card.value}
                           </p>
                         </div>
-                        <p className="text-xs font-bold text-slate-500">sur {formatNumber(group.day.actual)}</p>
-                      </div>
-                    </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_18px_40px_-34px_rgba(15,23,42,0.16)] sm:mt-5 sm:rounded-[1.7rem]">
-                <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4">
+              <div className="mt-3 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_18px_40px_-34px_rgba(15,23,42,0.16)] sm:mt-4 sm:rounded-[1.7rem]">
+                <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:px-5">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Tableau unique</p>
                     <h4 className="mt-1 text-lg font-black text-slate-950">Conforme et rebut</h4>
@@ -968,13 +850,13 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                 <div className="overflow-x-auto">
                   <div className={`${expanded ? 'min-w-[900px]' : 'min-w-[760px]'}`}>
                     <div className="grid grid-cols-[92px_repeat(6,minmax(0,1fr))] bg-slate-50 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                      <div className="px-4 py-3">Periode</div>
-                      <div className="px-4 py-3">Objectif</div>
-                      <div className="px-4 py-3">Qte totale</div>
-                      <div className="px-4 py-3">Conforme</div>
-                      <div className="px-4 py-3">Rebut</div>
-                      <div className="px-4 py-3">% conforme</div>
-                      <div className="px-4 py-3">% rebut</div>
+                      <div className="px-4 py-2.5">Periode</div>
+                      <div className="px-4 py-2.5">Objectif</div>
+                      <div className="px-4 py-2.5">Qte totale</div>
+                      <div className="px-4 py-2.5">Conforme</div>
+                      <div className="px-4 py-2.5">Rebut</div>
+                      <div className="px-4 py-2.5">% conforme</div>
+                      <div className="px-4 py-2.5">% rebut</div>
                     </div>
 
                     {[
@@ -985,25 +867,25 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                         key={`${group.key}-${row.label}`}
                         className="grid grid-cols-[92px_repeat(6,minmax(0,1fr))] border-t border-slate-200 text-sm odd:bg-white even:bg-slate-50/50"
                       >
-                        <div className="flex items-center px-4 py-4 font-black text-slate-900">{row.label}</div>
-                        <div className="px-4 py-4 font-semibold text-slate-700">{formatNumber(row.metrics.target)}</div>
-                        <div className={`px-4 py-4 font-black ${getBinaryTextColor(row.metrics.progress)}`}>
+                        <div className="flex items-center px-4 py-3 font-black text-slate-900">{row.label}</div>
+                        <div className="px-4 py-3 font-semibold text-slate-700">{formatNumber(row.metrics.target)}</div>
+                        <div className={`px-4 py-3 font-black ${getBinaryTextColor(row.metrics.progress)}`}>
                           {formatNumber(row.metrics.actual)}
                         </div>
-                        <div className={`px-4 py-4 font-black ${getMetricTextColor(getConformTargetRate(row.metrics))}`}>
+                        <div className={`px-4 py-3 font-black ${getMetricTextColor(getConformTargetRate(row.metrics))}`}>
                           {formatNumber(row.metrics.conform)}
                         </div>
-                        <div className={`px-4 py-4 font-black ${getScrapTextColor(row.metrics.scrapRate)}`}>
+                        <div className={`px-4 py-3 font-black ${getScrapTextColor(row.metrics.scrapRate)}`}>
                           {formatNumber(row.metrics.scrap)}
                         </div>
-                        <div className="px-4 py-4">
+                        <div className="px-4 py-3">
                           <span
                             className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${getToneClasses(getTone(getConformTargetRate(row.metrics)))}`}
                           >
                             {formatPercent(getConformTargetRate(row.metrics))}
                           </span>
                         </div>
-                        <div className="px-4 py-4">
+                        <div className="px-4 py-3">
                           <span
                             className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${getToneClasses(getScrapTone(row.metrics.scrapRate))}`}
                           >
@@ -1108,6 +990,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Semaines recentes</p>
                   <h4 className="mt-1 text-xl font-black tracking-[-0.03em] text-slate-950">{visibleWeekTitle}</h4>
+                  {renderInlineDepartmentFilter(baseGroup, group, groupKey, true)}
                 </div>
                 {!expanded ? (
                   <button
@@ -1265,10 +1148,6 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                         : DEPARTMENT_LABELS[selectedDepartmentByGroup[groupKey]] ?? selectedDepartmentByGroup[groupKey]}
                     </h3>
                   </div>
-                </div>
-
-                <div className="hidden lg:block lg:min-w-[16rem]">
-                  {renderBrandFrame(true)}
                 </div>
               </div>
 

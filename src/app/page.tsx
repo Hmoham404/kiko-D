@@ -1,25 +1,32 @@
 'use client';
 
 import React, { useState } from 'react';
+import { format, parseISO } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import Image from 'next/image';
-import { AlertTriangle, DatabaseZap, FileSpreadsheet, RefreshCw, RotateCcw } from 'lucide-react';
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, FileSpreadsheet, RotateCcw } from 'lucide-react';
 import { readJsonResponse } from '@/lib/http';
 import { useStore } from '@/store/useStore';
-import { DepartmentPdfExportButton } from '@/components/DepartmentPdfExportButton';
 import { ImportModal } from '@/components/ImportModal';
 import { ExecutiveDailyDashboard } from '@/components/ExecutiveDailyDashboard';
 
 const ACCESS_CODE = 'myc@2026';
+const formatFullDate = (date: string) => {
+  try {
+    return format(parseISO(date), 'EEEE dd MMMM yyyy', { locale: fr });
+  } catch {
+    return date;
+  }
+};
 
 export default function DashboardPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [showWarnings, setShowWarnings] = useState(true);
   const [isSyncing, setIsSyncing] = React.useState(true);
-  const [isRebuildingServer, setIsRebuildingServer] = React.useState(false);
   const [isResettingServer, setIsResettingServer] = React.useState(false);
   const [hasLoadedServerSnapshot, setHasLoadedServerSnapshot] = React.useState(false);
   const [syncError, setSyncError] = React.useState<string | null>(null);
-  const { productionData, subComponentsData, weeklyTargets, warnings, setSnapshot, clearData } = useStore();
+  const { productionData, subComponentsData, warnings, setSnapshot, clearData } = useStore();
 
   const [mounted, setMounted] = React.useState(() => useStore.persist.hasHydrated());
   React.useEffect(() => {
@@ -54,51 +61,6 @@ export default function DashboardPage() {
     } finally {
       setHasLoadedServerSnapshot(true);
       setIsSyncing(false);
-    }
-  });
-
-  const rebuildServerSnapshot = React.useEffectEvent(async () => {
-    if (productionData.length === 0 && subComponentsData.length === 0 && Object.keys(weeklyTargets).length === 0) {
-      setSyncError("Aucune donnee locale a reenregistrer dans la base.");
-      return;
-    }
-
-    setIsRebuildingServer(true);
-    setSyncError(null);
-
-    try {
-      const response = await fetch('/api/dashboard-data', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          productionData,
-          subComponentsData,
-          weeklyTargets,
-          warnings,
-        }),
-      });
-
-      const payload = (await readJsonResponse<{
-        error?: string;
-        snapshot?: {
-          productionData: typeof productionData;
-          subComponentsData: typeof subComponentsData;
-          weeklyTargets: Record<string, number>;
-          warnings: string[];
-        };
-      }>(response)) ?? null;
-
-      if (!response.ok || !payload?.snapshot) {
-        throw new Error(payload?.error ?? 'Reenregistrement serveur impossible.');
-      }
-
-      setSnapshot(payload.snapshot);
-    } catch (error) {
-      setSyncError(error instanceof Error ? error.message : 'Reenregistrement impossible.');
-    } finally {
-      setIsRebuildingServer(false);
     }
   });
 
@@ -177,8 +139,20 @@ export default function DashboardPage() {
     [requestActionCode]
   );
 
-  const actionCardClass =
-    'group relative flex min-h-[5.9rem] min-w-[10.75rem] flex-col justify-between overflow-hidden rounded-[1.5rem] border px-4 py-3 text-left shadow-[0_20px_38px_-30px_rgba(15,23,42,0.35)] transition duration-300 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60';
+  const availableDates = React.useMemo(() => {
+    const dates = new Set([...productionData.map((item) => item.date), ...subComponentsData.map((item) => item.date)]);
+    return Array.from(dates).filter(Boolean).sort();
+  }, [productionData, subComponentsData]);
+
+  const [selectedDate, setSelectedDate] = React.useState('');
+
+  const activeDate = availableDates.includes(selectedDate)
+    ? selectedDate
+    : availableDates[availableDates.length - 1] ?? '';
+  const activeDateIndex = availableDates.indexOf(activeDate);
+  const canGoToPreviousDate = activeDateIndex > 0;
+  const canGoToNextDate = activeDateIndex >= 0 && activeDateIndex < availableDates.length - 1;
+  const activeDateLabel = formatFullDate(activeDate);
 
   if (!mounted || (!hasLoadedServerSnapshot && isSyncing)) {
     return (
@@ -202,118 +176,116 @@ export default function DashboardPage() {
 
       <div className="relative z-10 flex min-h-screen flex-col">
         <header className="sticky top-0 z-50 border-b border-white/50 bg-white/78 shadow-[0_20px_40px_-32px_rgba(16,40,63,0.55)] backdrop-blur-xl">
-          <div className="mx-auto flex w-full max-w-[110rem] flex-col items-center gap-4 px-2 py-4 sm:px-4 lg:px-6">
-            <div className="flex w-full flex-col items-center justify-center gap-4 text-center lg:flex-row lg:items-center lg:justify-center lg:text-left">
-              <div className="dashboard-logo-frame relative flex items-center gap-3 overflow-hidden rounded-[1.6rem] border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(243,247,251,0.92))] px-5 py-4 shadow-[0_22px_48px_-34px_rgba(16,40,63,0.42)]">
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(214,69,93,0.14),transparent_45%),radial-gradient(circle_at_bottom_right,rgba(18,48,71,0.12),transparent_48%)]" />
-                <div className="relative z-10 flex h-14 w-20 items-center justify-center rounded-[1.15rem] border border-white/90 bg-white/92 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_14px_26px_-22px_rgba(15,23,42,0.48)]">
-                  <Image
-                    src="/logo myc.jpg"
-                    alt="MYC Beauty"
-                    width={170}
-                    height={48}
-                    className="h-10 w-auto rounded-md object-contain drop-shadow-[0_12px_20px_rgba(19,48,77,0.18)]"
-                  />
-                </div>
-                <div className="relative z-10 flex flex-col">
-                  <p className="text-[10px] font-black uppercase tracking-[0.26em] text-slate-400">MYC identity</p>
-                  <p className="mt-1 text-sm font-black tracking-[0.04em] text-slate-800">Beauty Manufacturing</p>
-                </div>
+          <div className="mx-auto w-full max-w-[110rem] px-2 py-3 sm:px-4 lg:px-6">
+            <div className="relative overflow-hidden rounded-[2rem] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,248,251,0.92))] px-4 py-4 shadow-[0_24px_50px_-34px_rgba(16,40,63,0.42)] sm:px-6">
+              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(214,69,93,0.08),transparent_28%,rgba(18,48,71,0.04)_68%,transparent_100%)]" />
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex w-full items-center justify-end opacity-[0.14]">
+                <Image
+                  src="/logo myc.jpg"
+                  alt=""
+                  width={620}
+                  height={220}
+                  className="h-24 w-auto object-contain blur-[0.3px] sm:h-28 lg:h-40"
+                />
               </div>
 
-              <div className="flex max-w-[36rem] flex-col items-center lg:items-start">
-                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Manufacturing cockpit</p>
-                <h1 className="bg-[linear-gradient(135deg,#0d2237,#c53b53)] bg-clip-text text-2xl font-black leading-tight tracking-tight text-transparent sm:text-[2rem]">
-                  MYC Production Dashboard
-                </h1>
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Performance par departement et par ligne
-                </p>
-              </div>
-            </div>
-
-            <div className="grid w-full max-w-[66rem] auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-              {productionData.length > 0 && (
-                <>
-                  <div className="dashboard-shell-panel flex min-h-[5.9rem] min-w-[10.75rem] flex-col justify-between rounded-[1.5rem] border border-white/60 px-4 py-3 shadow-[0_20px_38px_-30px_rgba(15,23,42,0.28)]">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Base</p>
-                        <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Systeme central</p>
-                      </div>
-                      <DatabaseZap className="h-4 w-4 text-[var(--dashboard-primary)]" />
-                    </div>
-                    <div className="flex items-end justify-between gap-3">
-                      <span className="text-base font-black text-slate-800">
-                        {isResettingServer ? 'Reset...' : isRebuildingServer ? 'Sync...' : 'Active'}
-                      </span>
-                      <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-600">
-                        live
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => void secureAction('Recharger la base', rebuildServerSnapshot)}
-                    disabled={isSyncing || isRebuildingServer || isResettingServer}
-                    className={`${actionCardClass} border-slate-200 bg-white hover:border-[var(--dashboard-accent-red)] hover:text-[var(--dashboard-accent-red-strong)]`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Sync</p>
-                        <p className="mt-2 text-sm font-black text-slate-800">Recharger</p>
-                      </div>
-                      <RefreshCw className={`h-4 w-4 ${isSyncing || isRebuildingServer ? 'animate-spin' : ''}`} />
-                    </div>
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      Mise a jour serveur
+              <div className="relative flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <div className="max-w-[42rem]">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex rounded-full border border-slate-200 bg-white/88 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">
+                      Manufacturing cockpit
                     </span>
-                  </button>
-
-                  <button
-                    onClick={() => void secureAction('Reset de la base', resetServerSnapshot)}
-                    disabled={isSyncing || isRebuildingServer || isResettingServer}
-                    className={`${actionCardClass} border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-400">Secure</p>
-                        <p className="mt-2 text-sm font-black">Reset</p>
-                      </div>
-                      <RotateCcw className={`h-4 w-4 ${isResettingServer ? 'animate-spin' : ''}`} />
-                    </div>
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-400">
-                      Action protegee
+                    <span className="inline-flex rounded-full bg-[linear-gradient(135deg,#123047,#244f74)] px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-white shadow-sm">
+                      MYC
                     </span>
-                  </button>
-
-                  <DepartmentPdfExportButton data={productionData} />
-                </>
-              )}
-              <button
-                onClick={() =>
-                  void secureAction('Importer des donnees', () => {
-                    setIsImportModalOpen(true);
-                  })
-                }
-                className={`${actionCardClass} border-[#b9344d] bg-[linear-gradient(135deg,#d6455d,#b9344d)] text-white hover:brightness-105`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/70">Upload</p>
-                    <p className="mt-2 text-sm font-black">Importer Daily Prod</p>
                   </div>
-                  <FileSpreadsheet className="h-4 w-4" />
+                  <h1 className="mt-3 text-[1.9rem] font-black leading-[1] tracking-[-0.05em] text-slate-950 sm:text-[2.4rem]">
+                    MYC Production <span className="text-[#b33b53]">Dashboard</span>
+                  </h1>
+                  <p className="mt-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-500 sm:text-[13px]">
+                    Performance par departement et par ligne
+                  </p>
                 </div>
-                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/72">
-                  Acces securise
-                </span>
-              </button>
+
+                {productionData.length > 0 ? (
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,22rem)_12rem] xl:min-w-[35rem]">
+                    <div className="rounded-[1.5rem] border border-white/80 bg-white/88 p-3 shadow-[0_16px_30px_-22px_rgba(15,23,42,0.26)] backdrop-blur">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Date</p>
+                          <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Lecture active</p>
+                        </div>
+                        <CalendarDays className="h-4 w-4 text-[var(--dashboard-primary)]" />
+                      </div>
+                      <p className="mt-2 truncate text-sm font-black capitalize text-slate-800">{activeDateLabel}</p>
+                      <div className="mt-3 grid grid-cols-[2.35rem_minmax(0,1fr)_2.35rem] items-center gap-2 rounded-[1rem] border border-slate-200 bg-white/90 p-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!canGoToPreviousDate) return;
+                            React.startTransition(() => setSelectedDate(availableDates[activeDateIndex - 1]));
+                          }}
+                          disabled={!canGoToPreviousDate}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition enabled:hover:border-slate-300 enabled:hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="Date precedente"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </button>
+
+                        <label className="flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 shadow-sm">
+                          <CalendarDays className="h-3.5 w-3.5 text-slate-500" />
+                          <input
+                            type="date"
+                            value={activeDate}
+                            min={availableDates[0]}
+                            max={availableDates[availableDates.length - 1]}
+                            onChange={(event) => {
+                              const nextValue = event.target.value;
+                              React.startTransition(() => setSelectedDate(nextValue));
+                            }}
+                            className="w-full bg-transparent text-xs font-bold text-slate-800 outline-none"
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!canGoToNextDate) return;
+                            React.startTransition(() => setSelectedDate(availableDates[activeDateIndex + 1]));
+                          }}
+                          disabled={!canGoToNextDate}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition enabled:hover:border-slate-300 enabled:hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="Date suivante"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => void secureAction('Reset de la base', resetServerSnapshot)}
+                      disabled={isSyncing || isResettingServer}
+                      className="group flex min-h-[8.5rem] flex-col justify-between overflow-hidden rounded-[1.5rem] border border-rose-200 bg-[linear-gradient(145deg,rgba(255,241,243,0.96),rgba(255,247,248,0.92))] px-4 py-3 text-left text-rose-700 shadow-[0_18px_36px_-26px_rgba(190,24,93,0.28)] transition duration-300 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-400">Secure</p>
+                          <p className="mt-2 text-lg font-black">Reset</p>
+                        </div>
+                        <RotateCcw className={`h-4 w-4 ${isResettingServer ? 'animate-spin' : ''}`} />
+                      </div>
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-400">
+                        Action protegee
+                      </span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </header>
 
-        <main className="mx-auto flex-grow w-full max-w-[110rem] px-2 py-6 sm:px-4 lg:px-6">
+        <main className="mx-auto flex-grow w-full max-w-[110rem] px-2 py-4 sm:px-4 lg:px-6">
           {syncError && (
             <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-sm">
               Synchronisation serveur indisponible. Affichage des donnees locales si disponibles.
@@ -343,7 +315,7 @@ export default function DashboardPage() {
               </button>
             </div>
           ) : (
-            <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="space-y-6 animate-in fade-in duration-500">
               {showWarnings && warnings.length > 0 && (
                 <div className="dashboard-shell-panel animate-in slide-in-from-top rounded-[1.6rem] border-l-4 border-[var(--dashboard-warning)] bg-[color-mix(in_srgb,var(--dashboard-warning)_14%,white)] p-4 duration-300">
                   <div className="flex items-start justify-between gap-4">
@@ -371,7 +343,12 @@ export default function DashboardPage() {
               )}
 
               <div className="animate-in fade-in duration-300">
-                <ExecutiveDailyDashboard data={productionData} subComponentsData={subComponentsData} />
+                <ExecutiveDailyDashboard
+                  data={productionData}
+                  subComponentsData={subComponentsData}
+                  availableDates={availableDates}
+                  selectedDate={activeDate}
+                />
               </div>
             </div>
           )}
