@@ -157,18 +157,6 @@ const getTone = (progress: number): 'green' | 'orange' | 'red' => {
   return 'red';
 };
 
-const getScrapTone = (scrapRate: number): 'green' | 'red' => (scrapRate <= 0.1 ? 'green' : 'red');
-
-const getToneClasses = (tone: 'green' | 'orange' | 'red') => {
-  if (tone === 'green') {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-800';
-  }
-  if (tone === 'orange') {
-    return 'border-amber-200 bg-amber-50 text-amber-800';
-  }
-  return 'border-rose-200 bg-rose-50 text-rose-800';
-};
-
 const getAccentShadow = (accent: string) => `0 28px 64px -42px ${accent}55`;
 
 const SimpleWeeklyTrendChart: React.FC<{ data: DailyCurvePoint[] }> = ({ data }) => {
@@ -501,9 +489,6 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     if (tone === 'orange') return 'text-amber-600';
     return 'text-rose-600';
   };
-
-  const getBinaryTextColor = (progress: number) => (progress >= 1 ? 'text-emerald-600' : 'text-rose-600');
-  const getScrapTextColor = (scrapRate: number) => (scrapRate <= 0.1 ? 'text-emerald-600' : 'text-rose-600');
   const updateSelectedDepartment = (groupKey: 'SFG' | 'FG', department: string) => {
     startTransition(() =>
       setSelectedDepartmentByGroup((current) => ({
@@ -703,37 +688,41 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
               key: 'conformRate',
               label: 'QTE / OBJECTIF',
               value: formatPercent(conformTargetRate),
-              tone: getMetricTextColor(conformTargetRate),
+              tone: 'text-emerald-700',
               icon: ShieldCheck,
-              iconClass: 'text-emerald-500',
+              iconClass: 'text-emerald-600',
+              surfaceClass: 'border-emerald-200 bg-[linear-gradient(180deg,#ffffff_0%,#ecfdf5_100%)]',
             },
             {
               key: 'scrapRate',
               label: 'Rebut J-1',
               value: formatPercent(group.day.scrapRate),
-              tone: getScrapTextColor(group.day.scrapRate),
+              tone: 'text-rose-700',
               icon: TriangleAlert,
-              iconClass: 'text-rose-500',
+              iconClass: 'text-rose-600',
+              surfaceClass: 'border-rose-200 bg-[linear-gradient(180deg,#ffffff_0%,#fff1f2_100%)]',
             },
             {
               key: 'conformQty',
               label: 'Qte Conforme',
               value: formatNumber(group.day.conform),
-              tone: 'text-emerald-600',
+              tone: 'text-slate-950',
               icon: BadgeCheck,
-              iconClass: 'text-emerald-500',
+              iconClass: 'text-slate-900',
+              surfaceClass: 'border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]',
             },
             {
               key: 'scrapQty',
               label: 'Qte Rebut',
               value: formatNumber(group.day.scrap),
-              tone: 'text-rose-600',
+              tone: 'text-rose-700',
+              surfaceClass: 'border-rose-200 bg-[linear-gradient(180deg,#ffffff_0%,#fff1f2_100%)]',
             },
           ];
 
           const renderOverviewPanel = (expanded = false) => (
             <div className={expanded ? 'p-2 sm:p-3' : 'p-3 sm:p-4'}>
-              <div className="rounded-[1.6rem] border border-slate-200 bg-[linear-gradient(135deg,#effbfd_0%,#ffffff_82%)] p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] sm:p-5">
+              <div className="rounded-[1.6rem] border border-slate-200 bg-[linear-gradient(135deg,#f2fbfd_0%,#ffffff_48%,#f8fafc_100%)] p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] sm:p-5">
                 <div
                   className={`${
                     expanded ? 'cursor-default' : 'cursor-zoom-in hover:-translate-y-1 transition duration-300'
@@ -815,15 +804,15 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                       return (
                         <div
                           key={card.key}
-                          className="flex min-h-[6.2rem] flex-col justify-between rounded-[1rem] border border-white/90 bg-white/92 px-3 py-3 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.22)]"
+                          className={`flex min-h-[7rem] flex-col justify-between rounded-[1.15rem] border px-4 py-3.5 shadow-[0_18px_34px_-26px_rgba(15,23,42,0.18)] ${card.surfaceClass}`}
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">
+                            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-950 sm:text-xs">
                               {card.label}
                             </p>
                             {card.icon ? <card.icon className={`h-4 w-4 shrink-0 ${card.iconClass}`} /> : null}
                           </div>
-                          <p className={`text-[1.65rem] font-black tracking-[-0.04em] ${card.tone}`}>
+                          <p className={`text-[1.95rem] font-black tracking-[-0.045em] sm:text-[2.15rem] ${card.tone}`}>
                             {card.value}
                           </p>
                         </div>
@@ -834,9 +823,9 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
               </div>
 
               <div className="mt-3 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_18px_40px_-34px_rgba(15,23,42,0.16)] sm:mt-4 sm:rounded-[1.7rem]">
-                <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:px-5">
+                <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-4 py-3 sm:px-5">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Tableau unique</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-700">Tableau unique</p>
                     <h4 className="mt-1 text-lg font-black text-slate-950">Conforme et rebut</h4>
                   </div>
                   <span
@@ -849,7 +838,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
 
                 <div className="overflow-x-auto">
                   <div className={`${expanded ? 'min-w-[900px]' : 'min-w-[760px]'}`}>
-                    <div className="grid grid-cols-[92px_repeat(6,minmax(0,1fr))] bg-slate-50 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                    <div className="grid grid-cols-[92px_repeat(6,minmax(0,1fr))] bg-slate-100 text-[11px] font-black uppercase tracking-[0.16em] text-slate-800">
                       <div className="px-4 py-2.5">Periode</div>
                       <div className="px-4 py-2.5">Objectif</div>
                       <div className="px-4 py-2.5">Qte totale</div>
@@ -865,29 +854,29 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                     ].map((row) => (
                       <div
                         key={`${group.key}-${row.label}`}
-                        className="grid grid-cols-[92px_repeat(6,minmax(0,1fr))] border-t border-slate-200 text-sm odd:bg-white even:bg-slate-50/50"
+                        className="grid grid-cols-[92px_repeat(6,minmax(0,1fr))] border-t border-slate-200 text-[15px] odd:bg-white even:bg-slate-50/70"
                       >
-                        <div className="flex items-center px-4 py-3 font-black text-slate-900">{row.label}</div>
-                        <div className="px-4 py-3 font-semibold text-slate-700">{formatNumber(row.metrics.target)}</div>
-                        <div className={`px-4 py-3 font-black ${getBinaryTextColor(row.metrics.progress)}`}>
+                        <div className="flex items-center px-4 py-3.5 text-base font-black text-slate-950">{row.label}</div>
+                        <div className="px-4 py-3.5 font-black text-emerald-700">{formatNumber(row.metrics.target)}</div>
+                        <div className="px-4 py-3.5 font-black text-slate-950">
                           {formatNumber(row.metrics.actual)}
                         </div>
-                        <div className={`px-4 py-3 font-black ${getMetricTextColor(getConformTargetRate(row.metrics))}`}>
+                        <div className="px-4 py-3.5 font-black text-slate-950">
                           {formatNumber(row.metrics.conform)}
                         </div>
-                        <div className={`px-4 py-3 font-black ${getScrapTextColor(row.metrics.scrapRate)}`}>
+                        <div className="px-4 py-3.5 font-black text-rose-700">
                           {formatNumber(row.metrics.scrap)}
                         </div>
-                        <div className="px-4 py-3">
+                        <div className="px-4 py-3.5">
                           <span
-                            className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${getToneClasses(getTone(getConformTargetRate(row.metrics)))}`}
+                            className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-black text-emerald-700"
                           >
                             {formatPercent(getConformTargetRate(row.metrics))}
                           </span>
                         </div>
-                        <div className="px-4 py-3">
+                        <div className="px-4 py-3.5">
                           <span
-                            className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${getToneClasses(getScrapTone(row.metrics.scrapRate))}`}
+                            className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-sm font-black text-rose-700"
                           >
                             {formatPercent(row.metrics.scrapRate)}
                           </span>
