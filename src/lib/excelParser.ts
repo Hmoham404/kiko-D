@@ -1,7 +1,8 @@
 import * as XLSX from 'xlsx';
 import { format } from 'date-fns';
-import { ProductionData, SubComponentData } from '@/store/useStore';
+import type { ProductionData, SubComponentData } from '@/lib/dashboardTypes';
 import { getWeekMetadata } from '@/lib/weeklyMetrics';
+import { normalizeClientName } from '@/lib/productionClients';
 
 const WORKING_DAYS_PER_WEEK = 6;
 const roundUnits = (value: number) => Math.round(value);
@@ -137,6 +138,10 @@ export const parseExcelFile = async (
           (header) => header.includes('target') || header.includes('objectif') || header.includes('cible')
         );
         const shiftIdx = headers.findIndex((header) => header.includes('shift') || header.includes('equipe'));
+        const clientIdx = headers.findIndex((header) => /^(client|customer)(\b|_)/.test(header));
+        const clientMerges = (mainWorksheet['!merges'] ?? []).filter(
+          (range) => range.s.c <= clientIdx && range.e.c >= clientIdx
+        );
         const partNumberIdx = headers.findIndex(
           (header) =>
             header.includes('part number') ||
@@ -243,6 +248,23 @@ export const parseExcelFile = async (
           aggregatedByDate[formattedDate].actualProduction += actualProduction;
           aggregatedByDate[formattedDate].conformQty += conformQty;
           aggregatedByDate[formattedDate].scrapQty += scrapQty;
+
+          if (expectedDepartment === 'Assemblage') {
+            const mergedRange = clientMerges.find((range) => range.s.r <= i && range.e.r >= i);
+            const clientValue = clientIdx === -1 ? '' : row[clientIdx] ?? (
+              mergedRange ? mainRawData[mergedRange.s.r]?.[mergedRange.s.c] : ''
+            );
+            const client = normalizeClientName(clientValue);
+            const breakdown = aggregatedByDate[formattedDate].clientBreakdown ??= [];
+            let clientItem = breakdown.find((entry) => entry.client === client);
+            if (!clientItem) {
+              clientItem = { client, actualProduction: 0, conformQty: 0, scrapQty: 0 };
+              breakdown.push(clientItem);
+            }
+            clientItem.actualProduction += actualProduction;
+            clientItem.conformQty += conformQty;
+            clientItem.scrapQty += scrapQty;
+          }
         }
 
         const mainItems = Object.values(aggregatedByDate);

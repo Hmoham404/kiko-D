@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:clients": "node --test scripts/production-clients.test.mjs"
   },
   "dependencies": {
     "date-fns": "^4.2.1",

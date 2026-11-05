@@ -1,6 +1,8 @@
 import 'server-only';
 
-import type { DashboardSnapshot, ProductionData, ProductionStatus, SubComponentData } from '@/lib/dashboardTypes';
+import { createHash } from 'node:crypto';
+import type { ClientProductionData, DashboardSnapshot, ProductionData, ProductionStatus, SubComponentData } from '@/lib/dashboardTypes';
+import { normalizeClientName } from '@/lib/productionClients';
 
 type SupabaseMetadataRow = {
   meta_key: string;
@@ -59,6 +61,11 @@ type PersistPayload = {
 };
 
 const VALID_STATUSES: ProductionStatus[] = ['green', 'orange', 'red', 'critical'];
+// Keep daily department totals in production_reports and the client detail in
+// JSON metadata storage. Older databases use dashboard_snapshots instead.
+const ASSEMBLY_CLIENTS_PREFIX = 'assembly_clients::';
+const SNAPSHOT_METADATA_FILTER = '(meta_key.eq.warnings,meta_key.like.assembly_clients::*)';
+const LEGACY_METADATA_KIND = 'production-dashboard-metadata';
 
 const toNumber = (value: unknown) => {
   const parsed = Number(value ?? 0);
@@ -77,32 +84,35 @@ const getSupabaseConfig = () => {
   const rawUrl =
     process.env.SUPABASE_PROJECT_URL ??
     process.env.NEXT_PUBLIC_SUPABASE_URL ??
+    process.env.VITE_SUPABASE_URL ??
     '';
-  const serviceKey =
+  const apiKey =
     process.env.SUPABASE_SECRET_KEY ??
     process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    process.env.SUPABASE_PUBLISHABLE_KEY ??
+    process.env.VITE_SUPABASE_ANON_KEY ??
     '';
 
-  if (!rawUrl || !serviceKey) {
+  if (!rawUrl || !apiKey) {
     throw new Error(
-      'Configuration Supabase manquante. Definissez SUPABASE_PROJECT_URL et SUPABASE_SECRET_KEY (ou SUPABASE_SERVICE_ROLE_KEY) dans .env.local.'
+      'Configuration Supabase manquante. Definissez SUPABASE_PROJECT_URL et SUPABASE_SECRET_KEY (ou SUPABASE_SERVICE_ROLE_KEY), ou SUPABASE_PUBLISHABLE_KEY avec les policies RLS adequates, dans .env.local.'
     );
   }
 
   const projectUrl = normalizeSupabaseProjectUrl(rawUrl);
   return {
     restUrl: `${projectUrl}/rest/v1`,
-    serviceKey,
+    apiKey,
   };
 };
 
 const buildHeaders = (extraHeaders?: HeadersInit) => {
-  const { serviceKey } = getSupabaseConfig();
-  const isJwtKey = serviceKey.includes('.');
+  const { apiKey } = getSupabaseConfig();
+  const isJwtKey = apiKey.includes('.');
 
   return {
-    apikey: serviceKey,
-    ...(isJwtKey ? { Authorization: `Bearer ${serviceKey}` } : {}),
+    apikey: apiKey,
+    ...(isJwtKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     'Content-Type': 'application/json',
     ...extraHeaders,
   };
@@ -172,6 +182,67 @@ const isMissingTableError = (error: unknown, tableName: string) => {
   }
 
   return error.message.includes('PGRST205') && error.message.includes(`'public.${tableName}'`);
+};
+
+const loadSnapshotMetadata = async (): Promise<SupabaseMetadataRow[]> => {
+  try {
+    return await fetchFromSupabase<SupabaseMetadataRow[]>('dashboard_metadata', {
+      query: { select: 'meta_key,meta_value', or: SNAPSHOT_METADATA_FILTER },
+    });
+  } catch (error) {
+    if (!isMissingTableError(error, 'dashboard_metadata')) throw error;
+    try {
+      const rows = await fetchFromSupabase<Array<{ payload: SupabaseMetadataRow }>>('dashboard_snapshots', {
+        query: { select: 'payload', 'payload->>kind': `eq.${LEGACY_METADATA_KIND}` },
+      });
+      return rows.map((row) => row.payload);
+    } catch (fallbackError) {
+      if (isMissingTableError(fallbackError, 'dashboard_snapshots')) return [];
+      throw fallbackError;
+    }
+  }
+};
+
+const persistSnapshotMetadata = async (rows: SupabaseMetadataRow[]) => {
+  try {
+    await fetchFromSupabase('dashboard_metadata', {
+      method: 'POST',
+      query: { on_conflict: 'meta_key' },
+      headers: { Prefer: 'resolution=merge-duplicates' },
+      body: rows,
+    });
+  } catch (error) {
+    if (!isMissingTableError(error, 'dashboard_metadata')) throw error;
+    await fetchFromSupabase('dashboard_snapshots', {
+      method: 'POST',
+      query: { on_conflict: 'id' },
+      headers: { Prefer: 'resolution=merge-duplicates' },
+      body: rows.map((row) => {
+        // A stable UUID works with both text and UUID snapshot identifiers.
+        // Each day has its own record; unrelated snapshots are untouched.
+        const hash = createHash('sha256').update(`${LEGACY_METADATA_KIND}:${row.meta_key}`).digest('hex');
+        const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-8${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+        return {
+          id,
+          payload: { kind: LEGACY_METADATA_KIND, ...row },
+          updated_at: new Date().toISOString(),
+        };
+      }),
+    });
+  }
+};
+
+const clearSnapshotMetadata = async () => {
+  try {
+    await clearSupabaseTable('dashboard_metadata', { or: SNAPSHOT_METADATA_FILTER });
+  } catch (error) {
+    if (!isMissingTableError(error, 'dashboard_metadata')) throw error;
+    try {
+      await clearSupabaseTable('dashboard_snapshots', { 'payload->>kind': `eq.${LEGACY_METADATA_KIND}` });
+    } catch (fallbackError) {
+      if (!isMissingTableError(fallbackError, 'dashboard_snapshots')) throw fallbackError;
+    }
+  }
 };
 
 const mapProductionRowToItem = (row: SupabaseProductionRow): ProductionData => ({
@@ -260,6 +331,16 @@ const parseWarnings = (value: unknown) => {
   return value.map((warning) => String(warning)).filter(Boolean);
 };
 
+const parseClientBreakdown = (value: unknown): ClientProductionData[] => {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry) => entry && typeof entry === 'object').map((entry) => ({
+    client: normalizeClientName(entry.client),
+    actualProduction: toInteger(entry.actualProduction),
+    conformQty: toInteger(entry.conformQty),
+    scrapQty: toInteger(entry.scrapQty),
+  }));
+};
+
 export const loadDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
   const [productionRows, subComponentRows, weeklyTargetRows, metadataRows] = await Promise.all([
     fetchFromSupabase<SupabaseProductionRow[]>('production_reports', {
@@ -271,19 +352,18 @@ export const loadDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
     fetchFromSupabase<SupabaseWeeklyTargetRow[]>('weekly_targets', {
       query: { select: 'target_key,value' },
     }),
-    fetchFromSupabase<SupabaseMetadataRow[]>('dashboard_metadata', {
-      query: { select: 'meta_key,meta_value', meta_key: 'eq.warnings' },
-    }).catch((error) => {
-      if (isMissingTableError(error, 'dashboard_metadata')) {
-        return [] as SupabaseMetadataRow[];
-      }
-
-      throw error;
-    }),
+    loadSnapshotMetadata(),
   ]);
 
+  const metadata = new Map(metadataRows.map((row) => [row.meta_key, row.meta_value]));
   const productionData = productionRows
     .map(mapProductionRowToItem)
+    .map((item) => {
+      const detail = metadata.get(`${ASSEMBLY_CLIENTS_PREFIX}${item.date}`);
+      return item.department === 'Assemblage' && detail !== undefined
+        ? { ...item, clientBreakdown: parseClientBreakdown(detail) }
+        : item;
+    })
     .sort((left, right) => left.date.localeCompare(right.date) || left.department.localeCompare(right.department));
   const subComponentsData = subComponentRows
     .map(mapSubComponentRowToItem)
@@ -291,7 +371,7 @@ export const loadDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
   const weeklyTargets = Object.fromEntries(
     weeklyTargetRows.map((row) => [row.target_key, toNumber(row.value)])
   );
-  const warnings = parseWarnings(metadataRows[0]?.meta_value);
+  const warnings = parseWarnings(metadata.get('warnings'));
 
   return {
     productionData,
@@ -303,6 +383,18 @@ export const loadDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
 
 export const persistDashboardSnapshot = async (payload: PersistPayload) => {
   const writes: Array<Promise<unknown>> = [];
+  const assemblyItems = payload.productionData?.filter((item) => item.department === 'Assemblage') ?? [];
+  const metadataRows: SupabaseMetadataRow[] = assemblyItems.map((item) => ({
+    meta_key: `${ASSEMBLY_CLIENTS_PREFIX}${item.date}`,
+    meta_value: parseClientBreakdown(item.clientBreakdown),
+  }));
+  if (payload.warnings) {
+    metadataRows.push({ meta_key: 'warnings', meta_value: payload.warnings });
+  }
+  if (metadataRows.length > 0) {
+    // Do not import totals if the corresponding client detail cannot be saved.
+    await persistSnapshotMetadata(metadataRows);
+  }
 
   if (payload.productionData && payload.productionData.length > 0) {
     writes.push(
@@ -340,28 +432,6 @@ export const persistDashboardSnapshot = async (payload: PersistPayload) => {
     );
   }
 
-  if (payload.warnings) {
-    writes.push(
-      fetchFromSupabase('dashboard_metadata', {
-        method: 'POST',
-        query: { on_conflict: 'meta_key' },
-        headers: { Prefer: 'resolution=merge-duplicates' },
-        body: [
-          {
-            meta_key: 'warnings',
-            meta_value: payload.warnings,
-          },
-        ],
-      }).catch((error) => {
-        if (isMissingTableError(error, 'dashboard_metadata')) {
-          return null;
-        }
-
-        throw error;
-      })
-    );
-  }
-
   await Promise.all(writes);
   return loadDashboardSnapshot();
 };
@@ -371,13 +441,7 @@ export const replaceDashboardSnapshot = async (payload: PersistPayload) => {
     clearSupabaseTable('production_reports', { id: 'not.is.null' }),
     clearSupabaseTable('sub_component_reports', { id: 'not.is.null' }),
     clearSupabaseTable('weekly_targets', { id: 'not.is.null' }),
-    clearSupabaseTable('dashboard_metadata', { meta_key: 'eq.warnings' }).catch((error) => {
-      if (isMissingTableError(error, 'dashboard_metadata')) {
-        return null;
-      }
-
-      throw error;
-    }),
+    clearSnapshotMetadata(),
   ]);
 
   return persistDashboardSnapshot(payload);
@@ -388,13 +452,7 @@ export const clearDashboardSnapshot = async () => {
     clearSupabaseTable('production_reports', { id: 'not.is.null' }),
     clearSupabaseTable('sub_component_reports', { id: 'not.is.null' }),
     clearSupabaseTable('weekly_targets', { id: 'not.is.null' }),
-    clearSupabaseTable('dashboard_metadata', { meta_key: 'eq.warnings' }).catch((error) => {
-      if (isMissingTableError(error, 'dashboard_metadata')) {
-        return null;
-      }
-
-      throw error;
-    }),
+    clearSnapshotMetadata(),
   ]);
 
   return {

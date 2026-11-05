@@ -23,6 +23,7 @@ import {
   YAxis,
 } from 'recharts';
 import { buildWeeklyTargetOverrideKey, getWeekMetadata } from '@/lib/weeklyMetrics';
+import { getAssemblyClients, getClientQuantities } from '@/lib/productionClients';
 import { ProductionData, SubComponentData, useStore } from '@/store/useStore';
 
 interface ExecutiveDailyDashboardProps {
@@ -46,7 +47,6 @@ type GroupDefinition = {
   key: 'PLANT' | 'SFG' | 'FG';
   title: string;
   alias: string;
-  subtitle: string;
   departments: string[];
   accent: string;
   softAccent: string;
@@ -91,7 +91,6 @@ const GROUPS: GroupDefinition[] = [
     key: 'PLANT',
     title: 'Performance usine',
     alias: 'OTE',
-    subtitle: 'Vue globale production du jour',
     departments: ['Injection', 'Soudure', 'US serigraphie', 'Metallisation', 'Assemblage', 'Packaging'],
     accent: '#123047',
     softAccent: '#e4edf2',
@@ -100,7 +99,6 @@ const GROUPS: GroupDefinition[] = [
     key: 'SFG',
     title: 'SFG / PSF',
     alias: 'PSF',
-    subtitle: 'Injection, soudure, serigraphie et metallisation',
     departments: ['Injection', 'Soudure', 'US serigraphie', 'Metallisation'],
     accent: '#0f8b8d',
     softAccent: '#e0fbfa',
@@ -109,7 +107,6 @@ const GROUPS: GroupDefinition[] = [
     key: 'FG',
     title: 'FG / PF',
     alias: 'PF',
-    subtitle: 'Assemblage et packaging',
     departments: ['Assemblage', 'Packaging'],
     accent: '#ff7a45',
     softAccent: '#fff0e6',
@@ -282,6 +279,11 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     FG: 'ALL',
   });
   const [presentationView, setPresentationView] = useState<null | { groupKey: 'SFG' | 'FG'; panel: 'overview' | 'bars' | 'trend' }>(null);
+  const [selectedAssemblyClient, setSelectedAssemblyClient] = useState<string | null>(null);
+  const assemblyClients = useMemo(() => getAssemblyClients(data), [data]);
+  const activeAssemblyClient = selectedAssemblyClient !== null && assemblyClients.includes(selectedAssemblyClient)
+    ? selectedAssemblyClient
+    : null;
 
   React.useEffect(() => {
     if (!presentationView) {
@@ -412,7 +414,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     return roundUnits(fallbackItem.target * WORKING_DAYS_PER_WEEK);
   };
 
-  const getDepartmentDailyMetrics = (department: string, date: string): Metrics => {
+  const getDepartmentDailyMetrics = (department: string, date: string, client: string | null = null): Metrics => {
     const item = getDepartmentItemForDate(department, date);
     const target = getDailyTarget(department, date);
 
@@ -420,27 +422,35 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
       return buildMetrics(target, 0, 0, 0);
     }
 
-    return buildMetrics(target, item.actualProduction, item.conformQty, item.scrapQty);
+    const quantities = getClientQuantities(item, client);
+    return buildMetrics(target, quantities.actualProduction, quantities.conformQty, quantities.scrapQty);
   };
 
-  const getDepartmentImportedMetrics = (department: string, date: string): Metrics => {
+  const getDepartmentImportedMetrics = (department: string, date: string, client: string | null = null): Metrics => {
     const items = getDepartmentSeries(department).filter((item) => item.date <= date);
     if (items.length === 0) return EMPTY_METRICS;
 
     const target = items.reduce((sum, item) => sum + getDailyTarget(department, item.date), 0);
-    const actual = items.reduce((sum, item) => sum + item.actualProduction, 0);
-    const conform = items.reduce((sum, item) => sum + item.conformQty, 0);
-    const scrap = items.reduce((sum, item) => sum + item.scrapQty, 0);
+    const quantities = items.map((item) => getClientQuantities(item, client));
+    const actual = quantities.reduce((sum, item) => sum + item.actualProduction, 0);
+    const conform = quantities.reduce((sum, item) => sum + item.conformQty, 0);
+    const scrap = quantities.reduce((sum, item) => sum + item.scrapQty, 0);
 
     return buildMetrics(target, actual, conform, scrap);
   };
 
   const getGroupMetrics = (
     group: GroupDefinition,
-    metricGetter: (department: string, date: string) => Metrics,
+    metricGetter: (department: string, date: string, client?: string | null) => Metrics,
     date: string
   ) => {
-    const metrics = group.departments.map((department) => metricGetter(department, date));
+    const metrics = group.departments.map((department) => metricGetter(
+      department,
+      date,
+      group.key === 'FG' && selectedDepartmentByGroup.FG === 'Assemblage' && department === 'Assemblage'
+        ? activeAssemblyClient
+        : null
+    ));
 
     return buildMetrics(
       metrics.reduce((sum, item) => sum + item.target, 0),
@@ -498,6 +508,32 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     );
   };
 
+  const renderClientFilter = (groupKey: 'SFG' | 'FG') => {
+    if (groupKey !== 'FG' || selectedDepartmentByGroup.FG !== 'Assemblage') return null;
+
+    return (
+      <div className="mt-3 w-full border-t border-slate-200/80 pt-3">
+        <label className="flex flex-wrap items-center gap-3">
+          <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Client</span>
+          <select
+            aria-label="Client Assemblage"
+            title={activeAssemblyClient !== null ? 'Objectif du département Assemblage' : undefined}
+            value={activeAssemblyClient === null ? 'all' : JSON.stringify(activeAssemblyClient)}
+            onChange={(event) => setSelectedAssemblyClient(
+              event.target.value === 'all' ? null : JSON.parse(event.target.value) as string
+            )}
+            className="min-w-0 max-w-full flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-600/20 sm:max-w-64"
+          >
+            <option value="all">Tous les clients</option>
+            {assemblyClients.map((client) => (
+              <option key={client} value={JSON.stringify(client)}>{client || 'Non renseigné'}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+    );
+  };
+
   const renderDepartmentFilterCard = (
     baseGroup: GroupSnapshot,
     group: GroupSnapshot,
@@ -515,10 +551,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
         onKeyDown={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Choix departement</p>
-            <h4 className="mt-2 text-lg font-black text-slate-950">Filtre</h4>
-          </div>
+          <h4 className="text-lg font-black text-slate-950">Département</h4>
           <span
             className="inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em]"
             style={{ borderColor: `${group.accent}33`, color: group.accent, backgroundColor: `${group.accent}10` }}
@@ -563,6 +596,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
             );
           })}
         </div>
+        {renderClientFilter(groupKey)}
       </div>
     );
   };
@@ -613,6 +647,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
           </button>
         );
       })}
+      {renderClientFilter(groupKey)}
     </div>
   );
 
@@ -649,7 +684,12 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     visibleWeekKeys.map((weekKey) => {
       const weekRows = normalizedData.filter((item) => item.weekKey === weekKey && group.departments.includes(item.department));
       const target = group.departments.reduce((sum, department) => sum + getDepartmentWeeklyTarget(department, weekKey), 0);
-      const actual = weekRows.reduce((sum, item) => sum + item.actualProduction, 0);
+      const actual = weekRows.reduce((sum, item) => sum + getClientQuantities(
+        item,
+        group.key === 'FG' && selectedDepartmentByGroup.FG === 'Assemblage' && item.department === 'Assemblage'
+          ? activeAssemblyClient
+          : null
+      ).actualProduction, 0);
       const progress = target > 0 ? actual / target : 0;
       const referenceDate = weekKey.split('__')[0];
       const weekMeta = getWeekMetadata(referenceDate);
@@ -678,7 +718,11 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
           const selectedDepartmentLabel =
             !selectedDepartment || selectedDepartment === 'ALL'
               ? `Tout ${baseGroup.key}`
-              : DEPARTMENT_LABELS[selectedDepartment] ?? selectedDepartment;
+              : `${DEPARTMENT_LABELS[selectedDepartment] ?? selectedDepartment}${
+                  groupKey === 'FG' && selectedDepartment === 'Assemblage' && activeAssemblyClient !== null
+                    ? ` · ${activeAssemblyClient || 'Non renseigné'}`
+                    : ''
+                }`;
           const activeZones = selectedDepartment === 'ALL' ? baseGroup.departments.length : 1;
           const conformTargetRate = getConformTargetRate(group.day);
           const isOverviewExpanded =
@@ -721,10 +765,10 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
           ];
 
           const renderOverviewPanel = (expanded = false) => (
-            <div className={expanded ? 'p-2 sm:p-3' : 'p-3 sm:p-4'}>
-              <div className="rounded-[1.6rem] border border-slate-200 bg-[linear-gradient(135deg,#f2fbfd_0%,#ffffff_48%,#f8fafc_100%)] p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] sm:p-5">
+            <div className={expanded ? 'p-2 sm:p-3' : 'flex flex-1 flex-col p-3 sm:p-4'}>
+              <div className="flex flex-1 flex-col rounded-[1.6rem] border border-slate-200 bg-[linear-gradient(135deg,#f2fbfd_0%,#ffffff_48%,#f8fafc_100%)] p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] sm:p-5">
                 <div
-                  className={`${
+                  className={`flex flex-1 flex-col ${
                     expanded ? 'cursor-default' : 'cursor-zoom-in hover:-translate-y-1 transition duration-300'
                   }`}
                   onClick={
@@ -764,7 +808,6 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                           <h3 className="text-[1.9rem] font-black tracking-[-0.05em] text-slate-950 sm:text-[2.2rem]">
                             {group.title}
                           </h3>
-                          <p className="mt-2 max-w-xl text-[13px] leading-6 text-slate-600">{baseGroup.subtitle}</p>
                         </div>
                         {!expanded ? (
                           <button
@@ -784,10 +827,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
 
                     <div className="w-full xl:max-w-[28rem]">
                       <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Choix departement</p>
-                          <h4 className="mt-1 text-lg font-black text-slate-950">Filtre</h4>
-                        </div>
+                        <h4 className="text-lg font-black text-slate-950">Département</h4>
                         <span
                           className="inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em]"
                           style={{ borderColor: `${group.accent}33`, color: group.accent, backgroundColor: `${group.accent}10` }}
@@ -799,7 +839,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                     </div>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
+                  <div className="mt-auto grid grid-cols-2 gap-2 pt-4 xl:grid-cols-4">
                     {overviewMetricCards.map((card) => {
                       return (
                         <div
@@ -822,14 +862,14 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                 </div>
               </div>
 
-              <div className="mt-3 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_18px_40px_-34px_rgba(15,23,42,0.16)] sm:mt-4 sm:rounded-[1.7rem]">
+              <div className="mt-3 shrink-0 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_18px_40px_-34px_rgba(15,23,42,0.16)] sm:mt-4 sm:rounded-[1.7rem]">
                 <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-4 py-3 sm:px-5">
                   <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-700">Tableau unique</p>
-                    <h4 className="mt-1 text-lg font-black text-slate-950">Conforme et rebut</h4>
+                    <h4 className="text-lg font-black text-slate-950">Conforme et rebut</h4>
                   </div>
                   <span
-                    className="inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em]"
+                    className="block max-w-[45%] truncate rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em]"
+                    title={selectedDepartmentLabel}
                     style={{ borderColor: `${group.accent}33`, color: group.accent, backgroundColor: `${group.accent}10` }}
                   >
                     {selectedDepartmentLabel}
@@ -892,7 +932,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
           return (
             <article
               key={baseGroup.key}
-              className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_20px_48px_-40px_rgba(18,48,71,0.3)]"
+              className="flex flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_20px_48px_-40px_rgba(18,48,71,0.3)]"
               style={{ boxShadow: getAccentShadow(group.accent) }}
             >
               {renderOverviewPanel()}
@@ -1077,8 +1117,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Courbe semaine active</p>
-                  <h4 className="mt-1 text-xl font-black tracking-[-0.03em] text-slate-950">{currentWeekLabel} - Objectif et realise</h4>
+                  <h4 className="text-xl font-black tracking-[-0.03em] text-slate-950">{currentWeekLabel} - Objectif et realise</h4>
                   <p className={`mt-2 text-base font-black ${getMetricTextColor(activeWeekProgress)}`}>
                     {activeWeekActual >= activeWeekTarget ? 'Sur target' : 'Sous target'} - {formatPercent(activeWeekProgress)}
                   </p>
@@ -1150,12 +1189,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
 
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Lecture croquis</p>
-                    <h4 className="mt-1 text-xl font-black tracking-[-0.03em] text-slate-950">{visibleWeekTitle} a gauche, {currentWeekLabel} a droite</h4>
-                    <p className={`mt-2 text-base font-black ${getMetricTextColor(activeWeekProgress)}`}>
-                      {activeWeekActual >= activeWeekTarget ? 'Sur target' : 'Sous target'} - {formatPercent(activeWeekProgress)}
-                    </p>
-                    {currentWeekRange ? <p className="mt-1 text-xs font-semibold text-slate-500">{currentWeekRange}</p> : null}
+                    {currentWeekRange ? <p className="text-xs font-semibold text-slate-500">{currentWeekRange}</p> : null}
                   </div>
 
                   <div className="grid w-full max-w-[34rem] grid-cols-2 gap-3 sm:grid-cols-3 xl:w-auto xl:grid-cols-5">

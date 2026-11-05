@@ -1,5 +1,12 @@
 export type ProductionStatus = 'green' | 'orange' | 'red' | 'critical';
 
+export interface ClientProductionData {
+  client: string;
+  actualProduction: number;
+  conformQty: number;
+  scrapQty: number;
+}
+
 export interface ProductionData {
   department: string;
   date: string;
@@ -9,6 +16,7 @@ export interface ProductionData {
   partNumber?: string;
   machine?: string;
   unitOfProduction?: string;
+  clientBreakdown?: ClientProductionData[];
   target: number;
   weeklyTarget: number;
   actualProduction: number;

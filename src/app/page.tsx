@@ -4,11 +4,13 @@ import React, { useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import Image from 'next/image';
-import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, FileSpreadsheet, RotateCcw } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, FileSpreadsheet, RotateCcw } from 'lucide-react';
 import { readJsonResponse } from '@/lib/http';
 import { useStore } from '@/store/useStore';
 import { ImportModal } from '@/components/ImportModal';
 import { ExecutiveDailyDashboard } from '@/components/ExecutiveDailyDashboard';
+import { KikoProductionProgress } from '@/components/KikoProductionProgress';
+import { ResetDataDialog } from '@/components/ResetDataDialog';
 
 const ACCESS_CODE = 'myc@2026';
 const formatFullDate = (date: string) => {
@@ -21,12 +23,12 @@ const formatFullDate = (date: string) => {
 
 export default function DashboardPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [showWarnings, setShowWarnings] = useState(true);
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isSyncing, setIsSyncing] = React.useState(true);
   const [isResettingServer, setIsResettingServer] = React.useState(false);
   const [hasLoadedServerSnapshot, setHasLoadedServerSnapshot] = React.useState(false);
   const [syncError, setSyncError] = React.useState<string | null>(null);
-  const { productionData, subComponentsData, warnings, setSnapshot, clearData } = useStore();
+  const { productionData, subComponentsData, setSnapshot, clearData } = useStore();
 
   const [mounted, setMounted] = React.useState(() => useStore.persist.hasHydrated());
   React.useEffect(() => {
@@ -64,13 +66,9 @@ export default function DashboardPage() {
     }
   });
 
-  const resetServerSnapshot = React.useEffectEvent(async () => {
-    const confirmed = window.confirm(
-      'Cette action va vider les donnees du dashboard dans la base et localement. Continuer ?'
-    );
-
-    if (!confirmed) {
-      return;
+  const resetServerSnapshot = async (accessCode: string) => {
+    if (accessCode.trim() !== ACCESS_CODE) {
+      throw new Error('Code incorrect. Vérifiez votre code d’autorisation.');
     }
 
     setIsResettingServer(true);
@@ -92,17 +90,16 @@ export default function DashboardPage() {
       }>(response)) ?? null;
 
       if (!response.ok || !payload?.snapshot) {
-        throw new Error(payload?.error ?? 'Reset serveur impossible.');
+        throw new Error(payload?.error ?? 'Réinitialisation impossible. Réessayez.');
       }
 
       clearData();
       setSnapshot(payload.snapshot);
-    } catch (error) {
-      setSyncError(error instanceof Error ? error.message : 'Reset impossible.');
+      setIsResetDialogOpen(false);
     } finally {
       setIsResettingServer(false);
     }
-  });
+  };
 
   React.useEffect(() => {
     if (!mounted) return;
@@ -112,32 +109,6 @@ export default function DashboardPage() {
 
     return () => window.clearTimeout(syncHandle);
   }, [mounted]);
-
-  const requestActionCode = React.useCallback((actionLabel: string) => {
-    const enteredCode = window.prompt(`Entrez le code pour "${actionLabel}"`);
-
-    if (enteredCode === null) {
-      return false;
-    }
-
-    if (enteredCode.trim() !== ACCESS_CODE) {
-      setSyncError('Code incorrect. Utilisez le code autorise pour acceder a cette action.');
-      return false;
-    }
-
-    return true;
-  }, []);
-
-  const secureAction = React.useCallback(
-    async (actionLabel: string, action: () => Promise<void> | void) => {
-      if (!requestActionCode(actionLabel)) {
-        return;
-      }
-
-      await action();
-    },
-    [requestActionCode]
-  );
 
   const availableDates = React.useMemo(() => {
     const dates = new Set([...productionData.map((item) => item.date), ...subComponentsData.map((item) => item.date)]);
@@ -202,9 +173,6 @@ export default function DashboardPage() {
                   <h1 className="mt-3 text-[1.9rem] font-black leading-[1] tracking-[-0.05em] text-slate-950 sm:text-[2.4rem]">
                     MYC Production <span className="text-[#b33b53]">Dashboard</span>
                   </h1>
-                  <p className="mt-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-500 sm:text-[13px]">
-                    Performance par departement et par ligne
-                  </p>
                 </div>
 
                 {productionData.length > 0 ? (
@@ -213,7 +181,6 @@ export default function DashboardPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Date</p>
-                          <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Lecture active</p>
                         </div>
                         <CalendarDays className="h-4 w-4 text-[var(--dashboard-primary)]" />
                       </div>
@@ -263,7 +230,7 @@ export default function DashboardPage() {
                     </div>
 
                     <button
-                      onClick={() => void secureAction('Reset de la base', resetServerSnapshot)}
+                      onClick={() => setIsResetDialogOpen(true)}
                       disabled={isSyncing || isResettingServer}
                       className="group flex min-h-[8.5rem] flex-col justify-between overflow-hidden rounded-[1.5rem] border border-rose-200 bg-[linear-gradient(145deg,rgba(255,241,243,0.96),rgba(255,247,248,0.92))] px-4 py-3 text-left text-rose-700 shadow-[0_18px_36px_-26px_rgba(190,24,93,0.28)] transition duration-300 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
@@ -299,13 +266,7 @@ export default function DashboardPage() {
               <div className="mb-6 rounded-full bg-[linear-gradient(135deg,color-mix(in_srgb,var(--dashboard-primary)_14%,white),white)] p-6 shadow-inner">
                 <FileSpreadsheet className="h-16 w-16 text-[var(--dashboard-primary)]" />
               </div>
-              <h2 className="mb-2 text-3xl font-black tracking-tight text-slate-900">Aucune donnee de production</h2>
-              <p className="mb-8 max-w-md text-center text-slate-500">
-                Importez les fichiers Excel de chaque departement et, si besoin, votre fichier de targets depuis la
-                fenetre d&apos;import.
-                {' '}
-                <span className="font-semibold text-slate-700">Aucune dependance au dossier public.</span>
-              </p>
+              <h2 className="mb-6 text-3xl font-black tracking-tight text-slate-900">Aucune donnee de production</h2>
               <button
                 onClick={() => setIsImportModalOpen(true)}
                 className="flex items-center rounded-2xl bg-[linear-gradient(135deg,#d6455d,#b9344d)] px-6 py-3 font-black text-white shadow-[0_18px_36px_-18px_rgba(185,52,77,0.9)] transition hover:-translate-y-0.5"
@@ -316,32 +277,7 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="space-y-6 animate-in fade-in duration-500">
-              {showWarnings && warnings.length > 0 && (
-                <div className="dashboard-shell-panel animate-in slide-in-from-top rounded-[1.6rem] border-l-4 border-[var(--dashboard-warning)] bg-[color-mix(in_srgb,var(--dashboard-warning)_14%,white)] p-4 duration-300">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start">
-                      <AlertTriangle className="h-5 w-5 text-[var(--dashboard-warning)]" aria-hidden="true" />
-                      <div className="ml-3 flex-1">
-                        <h3 className="text-sm font-bold text-[var(--dashboard-primary-strong)]">
-                          Alertes qualite / coherence des donnees ({warnings.length})
-                        </h3>
-                        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-700">
-                          {warnings.map((warning, index) => (
-                            <li key={index}>{warning}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setShowWarnings(false)}
-                      className="text-[var(--dashboard-warning)] transition-colors hover:text-[var(--dashboard-primary-strong)]"
-                    >
-                      Masquer
-                    </button>
-                  </div>
-                </div>
-              )}
-
+              <KikoProductionProgress data={productionData} selectedDate={activeDate} />
               <div className="animate-in fade-in duration-300">
                 <ExecutiveDailyDashboard
                   data={productionData}
@@ -355,6 +291,15 @@ export default function DashboardPage() {
         </main>
 
         <ImportModal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} />
+        {isResetDialogOpen && (
+          <ResetDataDialog
+            isPending={isResettingServer}
+            onClose={() => {
+              if (!isResettingServer) setIsResetDialogOpen(false);
+            }}
+            onConfirm={resetServerSnapshot}
+          />
+        )}
       </div>
     </div>
   );
