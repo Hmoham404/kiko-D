@@ -6,10 +6,13 @@ import { parseExcelFile } from '@/lib/excelParser';
 import { readJsonResponse } from '@/lib/http';
 import { parseTargetSettingsWorkbook } from '@/lib/targetSettingsParser';
 import { useStore, ProductionData, SubComponentData } from '@/store/useStore';
+import { AssemblyClientTargetsModal } from '@/components/AssemblyClientTargetsModal';
+import { buildWeeklyTargetOverrideKey, getWeekMetadata } from '@/lib/weeklyMetrics';
 
 interface ImportModalProps {
   isOpen: boolean;
   onClose: () => void;
+  selectedDate?: string;
 }
 
 const DEPARTMENTS = [
@@ -29,17 +32,18 @@ const DEPARTMENTS = [
   { name: 'Packaging', fallbackWeeklyTarget: 3333 * 5 },
 ];
 
-export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
+export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, selectedDate }) => {
   const [files, setFiles] = useState<{ [key: string]: File | null }>({});
   const [targetFile, setTargetFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [success, setSuccess] = useState(false);
+  const [allocationWeek, setAllocationWeek] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState('Import termine avec succes.');
   const setSnapshot = useStore((state) => state.setSnapshot);
   const addProductionData = useStore((state) => state.addProductionData);
   const addSubComponentsData = useStore((state) => state.addSubComponentsData);
-  const replaceWeeklyTargets = useStore((state) => state.replaceWeeklyTargets);
+  const setWeeklyTargets = useStore((state) => state.setWeeklyTargets);
   const currentWeeklyTargets = useStore((state) => state.weeklyTargets);
 
   if (!isOpen) return null;
@@ -65,6 +69,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
     setFiles({});
     setTargetFile(null);
     setErrors([]);
+    setAllocationWeek(null);
   };
 
   const applyLocalFallback = (
@@ -74,7 +79,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
     warnings: string[]
   ) => {
     if (Object.keys(weeklyTargets).length > 0) {
-      replaceWeeklyTargets(weeklyTargets);
+      setWeeklyTargets(weeklyTargets);
     }
 
     addProductionData(productionData, warnings);
@@ -261,11 +266,27 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
     setSuccess(true);
     setLoading(false);
 
+    const importedAssemblyWeeks = allData.filter((item) => item.department === 'Assemblage').map((item) => item.weekKey);
+    const targetAssemblyWeeks = importedTargets
+      ? useStore.getState().productionData.filter((item) => item.department === 'Assemblage' &&
+          importedWeeklyTargets[buildWeeklyTargetOverrideKey('department', 'Assemblage', item.weekKey)] !== undefined).map((item) => item.weekKey)
+      : [];
+    const affectedWeeks = Array.from(new Set([...importedAssemblyWeeks, ...targetAssemblyWeeks])).sort();
+    if (affectedWeeks.length > 0) {
+      const preferredWeek = importedAssemblyWeeks.length > 0 ? [...importedAssemblyWeeks].sort().at(-1) ?? '' : selectedDate ? getWeekMetadata(selectedDate).weekKey : '';
+      setAllocationWeek(affectedWeeks.includes(preferredWeek) ? preferredWeek : affectedWeeks[affectedWeeks.length - 1]);
+      return;
+    }
+
     window.setTimeout(() => {
       onClose();
       resetModal();
     }, 1800);
   };
+
+  if (allocationWeek !== null) return (
+    <AssemblyClientTargetsModal initialWeekKey={allocationWeek} onClose={() => { onClose(); resetModal(); }} />
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -282,11 +303,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => 
 
         <div className="p-6">
           <div className="mb-6 rounded-xl border border-red-100 bg-red-50/70 p-4 text-sm text-slate-700">
-            <p className="font-semibold text-slate-900">Les targets ne se saisissent plus manuellement.</p>
+            <p className="font-semibold text-slate-900">Importez les objectifs totaux, puis répartissez Assemblage par client.</p>
             <p className="mt-1">
-              Importez ici votre fichier de targets puis vos fichiers de production. L&apos;application ne depend plus du
-              {' '}
-              <span className="font-mono font-semibold text-red-700">dossier public</span>.
+              Après l’import, saisissez l’objectif hebdomadaire de chaque client Assemblage.
+              La somme des objectifs clients doit correspondre au total de la semaine.
             </p>
           </div>
 

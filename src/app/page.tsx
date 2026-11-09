@@ -290,7 +290,7 @@ export default function DashboardPage() {
           )}
         </main>
 
-        <ImportModal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} />
+        <ImportModal isOpen={isImportModalOpen} selectedDate={activeDate} onClose={() => setIsImportModalOpen(false)} />
         {isResetDialogOpen && (
           <ResetDataDialog
             isPending={isResettingServer}

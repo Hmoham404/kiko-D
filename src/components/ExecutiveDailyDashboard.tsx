@@ -25,6 +25,8 @@ import {
 import { buildWeeklyTargetOverrideKey, getWeekMetadata } from '@/lib/weeklyMetrics';
 import { getAssemblyClients, getClientQuantities } from '@/lib/productionClients';
 import { ProductionData, SubComponentData, useStore } from '@/store/useStore';
+import { AssemblyClientTargetsModal } from '@/components/AssemblyClientTargetsModal';
+import { getAssemblyClientTarget, getAssemblyTargetClients, getAssemblyTargetWeeks } from '@/lib/assemblyClientTargets';
 
 interface ExecutiveDailyDashboardProps {
   data: ProductionData[];
@@ -280,7 +282,11 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
   });
   const [presentationView, setPresentationView] = useState<null | { groupKey: 'SFG' | 'FG'; panel: 'overview' | 'bars' | 'trend' }>(null);
   const [selectedAssemblyClient, setSelectedAssemblyClient] = useState<string | null>(null);
-  const assemblyClients = useMemo(() => getAssemblyClients(data), [data]);
+  const [isClientTargetsOpen, setIsClientTargetsOpen] = useState(false);
+  const assemblyClients = useMemo(() => Array.from(new Set([
+    ...getAssemblyClients(data),
+    ...getAssemblyTargetWeeks(data, weeklyTargets).flatMap((week) => getAssemblyTargetClients(data, weeklyTargets, week)),
+  ])), [data, weeklyTargets]);
   const activeAssemblyClient = selectedAssemblyClient !== null && assemblyClients.includes(selectedAssemblyClient)
     ? selectedAssemblyClient
     : null;
@@ -370,10 +376,13 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     return series[0] ?? null;
   };
 
-  const getDailyTarget = (department: string, date: string) => {
+  const getDailyTarget = (department: string, date: string, client: string | null = null) => {
     const weekKey = getWeekMetadata(date).weekKey;
+    if (department === 'Assemblage' && client !== null) {
+      return roundUnits((getAssemblyClientTarget(weeklyTargets, client, weekKey) ?? 0) / WORKING_DAYS_PER_WEEK);
+    }
     const importedWeeklyTarget = weeklyTargets[buildWeeklyTargetOverrideKey('department', department, weekKey)];
-    if (importedWeeklyTarget && importedWeeklyTarget > 0) {
+    if (importedWeeklyTarget !== undefined) {
       return roundUnits(importedWeeklyTarget / WORKING_DAYS_PER_WEEK);
     }
 
@@ -393,9 +402,12 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     return roundUnits(previousTargetItem?.target ?? 0);
   };
 
-  const getDepartmentWeeklyTarget = (department: string, weekKey: string) => {
+  const getDepartmentWeeklyTarget = (department: string, weekKey: string, client: string | null = null) => {
+    if (department === 'Assemblage' && client !== null) {
+      return getAssemblyClientTarget(weeklyTargets, client, weekKey) ?? 0;
+    }
     const importedWeeklyTarget = weeklyTargets[buildWeeklyTargetOverrideKey('department', department, weekKey)];
-    if (importedWeeklyTarget && importedWeeklyTarget > 0) {
+    if (importedWeeklyTarget !== undefined) {
       return roundUnits(importedWeeklyTarget);
     }
 
@@ -416,7 +428,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
 
   const getDepartmentDailyMetrics = (department: string, date: string, client: string | null = null): Metrics => {
     const item = getDepartmentItemForDate(department, date);
-    const target = getDailyTarget(department, date);
+    const target = getDailyTarget(department, date, client);
 
     if (!item) {
       return buildMetrics(target, 0, 0, 0);
@@ -430,7 +442,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
     const items = getDepartmentSeries(department).filter((item) => item.date <= date);
     if (items.length === 0) return EMPTY_METRICS;
 
-    const target = items.reduce((sum, item) => sum + getDailyTarget(department, item.date), 0);
+    const target = items.reduce((sum, item) => sum + getDailyTarget(department, item.date, client), 0);
     const quantities = items.map((item) => getClientQuantities(item, client));
     const actual = quantities.reduce((sum, item) => sum + item.actualProduction, 0);
     const conform = quantities.reduce((sum, item) => sum + item.conformQty, 0);
@@ -517,7 +529,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
           <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Client</span>
           <select
             aria-label="Client Assemblage"
-            title={activeAssemblyClient !== null ? 'Objectif du département Assemblage' : undefined}
+            title={activeAssemblyClient !== null ? 'Objectif hebdomadaire du client sélectionné' : undefined}
             value={activeAssemblyClient === null ? 'all' : JSON.stringify(activeAssemblyClient)}
             onChange={(event) => setSelectedAssemblyClient(
               event.target.value === 'all' ? null : JSON.parse(event.target.value) as string
@@ -530,6 +542,13 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
             ))}
           </select>
         </label>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
+          <span>{activeAssemblyClient === null ? 'Objectif total Assemblage' :
+            getAssemblyClientTarget(weeklyTargets, activeAssemblyClient, getWeekMetadata(activeDate).weekKey) === undefined
+              ? 'Objectif client non défini pour cette semaine'
+              : `Objectif client / semaine : ${formatNumber(getAssemblyClientTarget(weeklyTargets, activeAssemblyClient, getWeekMetadata(activeDate).weekKey) ?? 0)} pièces`}</span>
+          <button type="button" onClick={() => setIsClientTargetsOpen(true)} className="rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-[10px] font-bold text-orange-800 hover:bg-orange-100">Objectifs par client</button>
+        </div>
       </div>
     );
   };
@@ -683,7 +702,10 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
   const buildRecentWeekBars = (group: GroupDefinition) =>
     visibleWeekKeys.map((weekKey) => {
       const weekRows = normalizedData.filter((item) => item.weekKey === weekKey && group.departments.includes(item.department));
-      const target = group.departments.reduce((sum, department) => sum + getDepartmentWeeklyTarget(department, weekKey), 0);
+      const target = group.departments.reduce((sum, department) => sum + getDepartmentWeeklyTarget(
+        department, weekKey,
+        group.key === 'FG' && selectedDepartmentByGroup.FG === 'Assemblage' && department === 'Assemblage' ? activeAssemblyClient : null
+      ), 0);
       const actual = weekRows.reduce((sum, item) => sum + getClientQuantities(
         item,
         group.key === 'FG' && selectedDepartmentByGroup.FG === 'Assemblage' && item.department === 'Assemblage'
@@ -691,6 +713,8 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
           : null
       ).actualProduction, 0);
       const progress = target > 0 ? actual / target : 0;
+      const missingClientTarget = group.key === 'FG' && selectedDepartmentByGroup.FG === 'Assemblage' &&
+        activeAssemblyClient !== null && getAssemblyClientTarget(weeklyTargets, activeAssemblyClient, weekKey) === undefined;
       const referenceDate = weekKey.split('__')[0];
       const weekMeta = getWeekMetadata(referenceDate);
 
@@ -702,7 +726,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
         actual,
         progress,
         progressPercent: Number((progress * 100).toFixed(1)),
-        percentLabel: formatRatioPercent(progress),
+        percentLabel: missingClientTarget ? '—' : formatRatioPercent(progress),
       };
     });
 
@@ -710,6 +734,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
 
   return (
     <div className="space-y-5 sm:space-y-6">
+      {isClientTargetsOpen && <AssemblyClientTargetsModal initialWeekKey={getWeekMetadata(activeDate).weekKey} onClose={() => setIsClientTargetsOpen(false)} />}
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2 xl:gap-6">
         {[sfgGroup, fgGroup].map((baseGroup) => {
           const groupKey = baseGroup.key as 'SFG' | 'FG';
@@ -965,7 +990,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
         })}
       </section>
 
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2 xl:gap-6">
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2 xl:gap-x-6 xl:gap-y-0">
         {[sfgGroup, fgGroup].map((baseGroup) => {
           const groupKey = baseGroup.key as 'SFG' | 'FG';
           const group = getDisplayedGroup(baseGroup);
@@ -995,7 +1020,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
           const renderWeekBarsPanel = (expanded = false) => (
             <div
               className={`rounded-[1.6rem] border border-slate-200 bg-white p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] transition duration-300 ${
-                expanded ? 'min-h-[36rem]' : 'cursor-zoom-in hover:-translate-y-1'
+                expanded ? 'min-h-[36rem]' : 'cursor-zoom-in hover:-translate-y-1 xl:row-span-3 xl:grid xl:grid-rows-subgrid xl:gap-y-0'
               }`}
               onClick={
                 expanded
@@ -1095,7 +1120,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
           const renderTrendPanel = (expanded = false) => (
             <div
               className={`rounded-[1.6rem] border border-slate-200 bg-white p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.18)] transition duration-300 ${
-                expanded ? 'min-h-[38rem]' : 'cursor-zoom-in hover:-translate-y-1'
+                expanded ? 'min-h-[38rem]' : 'cursor-zoom-in hover:-translate-y-1 xl:row-span-3 xl:grid xl:grid-rows-subgrid xl:gap-y-0'
               }`}
               onClick={
                 expanded
@@ -1160,7 +1185,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
           return (
             <article
               key={`${group.key}-curve`}
-              className="rounded-[1.8rem] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-6"
+              className="rounded-[1.8rem] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-6 xl:row-span-9 xl:grid xl:grid-rows-subgrid"
               style={{ boxShadow: getAccentShadow(group.accent) }}
             >
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1180,11 +1205,11 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
               </div>
 
               <div
-                className="mt-4 overflow-hidden rounded-[1.6rem] border border-slate-200 p-4 shadow-[0_18px_44px_-34px_rgba(15,23,42,0.25)] sm:mt-5 sm:rounded-[1.8rem]"
+                className="mt-4 overflow-hidden rounded-[1.6rem] border border-slate-200 p-4 shadow-[0_18px_44px_-34px_rgba(15,23,42,0.25)] sm:mt-5 sm:rounded-[1.8rem] xl:row-span-8 xl:grid xl:grid-rows-subgrid"
                 style={{ background: `linear-gradient(180deg,#ffffff 0%, ${group.softAccent} 100%)` }}
               >
                 <div className="mb-4">
-                  {renderDepartmentFilterCard(baseGroup, group, groupKey, 'border-white/70 bg-white/88 backdrop-blur-sm')}
+                  {renderDepartmentFilterCard(baseGroup, group, groupKey, 'h-full border-white/70 bg-white/88 backdrop-blur-sm')}
                 </div>
 
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1206,7 +1231,7 @@ export const ExecutiveDailyDashboard: React.FC<ExecutiveDailyDashboardProps> = (
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-1 gap-5">
+                <div className="mt-4 grid grid-cols-1 gap-5 xl:row-span-6 xl:grid-rows-subgrid">
                   {renderWeekBarsPanel()}
                   {renderTrendPanel()}
                 </div>

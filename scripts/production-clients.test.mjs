@@ -23,6 +23,7 @@ function loadSource(relativePath, globals = {}, cache = new Map()) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
   const localRequire = (id) => {
+    if (globals.modules && Object.hasOwn(globals.modules, id)) return globals.modules[id];
     if (id === 'server-only') return {};
     if (id.startsWith('@/')) return loadSource(`src/${id.slice(2)}.ts`, globals, cache);
     return resolveDependency(id);
@@ -50,17 +51,141 @@ function workbookFile(rows, merges = []) {
 const headers = ['Date', 'Client', 'Produced Qty', 'Conforme Qty', 'Scrap Qty'];
 const { parseExcelFile } = loadSource('src/lib/excelParser.ts', { FileReader: WorkbookReader });
 const { getAssemblyClients, getClientQuantities } = loadSource('src/lib/productionClients.ts');
-const { getKikoProductionProgress } = loadSource('src/lib/kikoProductionProgress.ts');
+const { getKikoProductionProgress, getKikoPlanStatus } = loadSource('src/lib/kikoProductionProgress.ts');
+const {
+  buildAssemblyClientTargetKey, getAssemblyClientTarget, getAssemblyWeeklyTotal,
+  getAssemblyTargetClients, getAssemblyTargetWeeks, validateAssemblyClientAllocation,
+} = loadSource('src/lib/assemblyClientTargets.ts');
+const { buildWeeklyTargetOverrideKey, getWeekMetadata } = loadSource('src/lib/weeklyMetrics.ts');
+
+test('Assembly client targets: exact weekly allocation, normalized client keys, explicit zero, and no cross-week fallback', () => {
+  const week = getWeekMetadata('2026-11-05').weekKey;
+  const nextWeek = getWeekMetadata('2026-11-09').weekKey;
+  const data = [
+    { ...productionDay('2026-11-05', 100), weekKey: week, weeklyTarget: 50000 },
+    { ...productionDay('2026-11-05', 200, 'Assemblage', 'YZA'), weekKey: week, weeklyTarget: 50000 },
+    { ...productionDay('2026-11-09', 100, 'Assemblage', 'OTHER'), weekKey: nextWeek, weeklyTarget: 80000 },
+  ];
+  const totals = { [buildWeeklyTargetOverrideKey('department', 'Assemblage', week)]: 60000 };
+  const entries = validateAssemblyClientAllocation(data, totals, week, [{ client: ' kiko ', target: 42000 }, { client: 'YZA', target: 18000 }]);
+  assert.equal(getAssemblyWeeklyTotal(data, totals, week), 60000);
+  assert.equal(getAssemblyClientTarget(entries, 'KIKO', week), 42000);
+  assert.equal(getAssemblyClientTarget(entries, 'YZA', week), 18000);
+  assert.equal(getAssemblyClientTarget(entries, 'KIKO', nextWeek), undefined);
+  assert.equal(getAssemblyClientTarget(entries, 'OTHER', week), undefined);
+  assert.deepEqual(getAssemblyTargetClients(data, entries, week), ['KIKO', 'YZA']);
+  assert.deepEqual(getAssemblyTargetWeeks(data, entries), [week, nextWeek]);
+  const zero = validateAssemblyClientAllocation(data, totals, week, [{ client: 'KIKO', target: 0 }, { client: 'YZA', target: 60000 }]);
+  assert.equal(getAssemblyClientTarget(zero, 'KIKO', week), 0);
+  assert.equal(getAssemblyWeeklyTotal(data, { ...totals, [buildWeeklyTargetOverrideKey('department', 'Assemblage', week)]: 0 }, week), 0);
+  assert.equal(getAssemblyWeeklyTotal(data, {}, week), 50000);
+  assert.notEqual(buildAssemblyClientTargetKey('A::B', week), buildAssemblyClientTargetKey('A', `B::${week}`));
+  for (const allocations of [
+    [{ client: 'KIKO', target: 60000 }],
+    [{ client: 'KIKO', target: 30000 }, { client: ' kiko ', target: 30000 }],
+    [{ client: 'KIKO', target: 30000 }, { client: 'UNKNOWN', target: 30000 }],
+    [{ client: 'KIKO', target: 41999 }, { client: 'YZA', target: 18000 }],
+    [{ client: 'KIKO', target: 42001 }, { client: 'YZA', target: 18000 }],
+    [{ client: 'KIKO', target: -1 }, { client: 'YZA', target: 60001 }],
+    [{ client: 'KIKO', target: 30000.5 }, { client: 'YZA', target: 29999.5 }],
+  ]) assert.throws(() => validateAssemblyClientAllocation(data, totals, week, allocations));
+  assert.throws(() => validateAssemblyClientAllocation(data, totals, '2026-11-03__2026-11-08', []), /Semaine invalide/);
+  const unassigned = [{ ...productionDay('2026-11-05', 100), weekKey: week, weeklyTarget: 100, clientBreakdown: undefined }];
+  assert.deepEqual(getAssemblyTargetClients(unassigned, {}, week), ['']);
+  assert.equal(getAssemblyClientTarget(validateAssemblyClientAllocation(unassigned, {}, week, [{client: '', target: 100}]), '', week), 100);
+  // Saved plans still participate when a later reimport removes that client's production rows.
+  assert.deepEqual(getAssemblyTargetClients(data.filter((row) => row.clientBreakdown[0].client !== 'YZA'), entries, week), ['KIKO', 'YZA']);
+});
+
+test('Assembly target API: reject invalid totals before writing, then save only the selected week', async () => {
+  const week = getWeekMetadata('2026-11-05').weekKey;
+  const snapshot = { productionData: [{ ...productionDay('2026-11-05', 100), weekKey: week, weeklyTarget: 600 }], subComponentsData: [], weeklyTargets: {}, warnings: ['keep'] };
+  let writes = 0;
+  const { POST } = loadSource('src/app/api/assembly-client-targets/route.ts', { modules: {
+    '@/lib/dashboardDataService': {
+      loadDashboardSnapshot: async () => snapshot,
+      persistDashboardSnapshot: async (payload) => {
+        writes++;
+        assert.deepEqual(Object.keys(payload), ['weeklyTargets']);
+        Object.assign(snapshot.weeklyTargets, payload.weeklyTargets);
+        return snapshot;
+      },
+    },
+  } });
+  const request = (body) => new Request('http://localhost/api/assembly-client-targets', {method:'POST', body: JSON.stringify(body)});
+  for (const body of [null, {}, {weekKey:week, allocations:[{client:'KIKO', target:'600'}]}, {weekKey:week, allocations:[{client:'KIKO', target:599}]}]) {
+    assert.equal((await POST(request(body))).status, 400);
+  }
+  assert.equal(writes, 0);
+  const response = await POST(request({weekKey:week, allocations:[{client:'KIKO', target:600}]}));
+  assert.equal(response.status, 200);
+  assert.equal(writes, 1);
+  assert.equal(getAssemblyClientTarget((await response.json()).weeklyTargets, 'KIKO', week), 600);
+  // A new total imported meanwhile is checked against the server state.
+  snapshot.weeklyTargets[buildWeeklyTargetOverrideKey('department', 'Assemblage', week)] = 700;
+  assert.equal((await POST(request({weekKey:week, allocations:[{client:'KIKO', target:600}]}))).status, 400);
+  assert.equal(writes, 1);
+  const adjustment = await POST(request({weekKey:week, weeklyTotal:63000, allocations:[{client:'KIKO', target:63000}]}));
+  assert.equal(adjustment.status, 200);
+  const adjusted = (await adjustment.json()).weeklyTargets;
+  assert.equal(adjusted[buildWeeklyTargetOverrideKey('department', 'Assemblage', week)], 63000);
+  assert.equal(getAssemblyClientTarget(adjusted, 'KIKO', week), 63000);
+  assert.equal(writes, 2);
+  for (const weeklyTotal of [-1, 63000.5, '63000']) {
+    assert.equal((await POST(request({weekKey:week, weeklyTotal, allocations:[{client:'KIKO', target:63000}]}))).status, 400);
+  }
+  assert.equal(writes, 2);
+});
+
+test('Assembly W45: CT zero and KIKO 10500 per day revise the weekly total together', () => {
+  const week = getWeekMetadata('2026-11-05').weekKey;
+  const data = [
+    { ...productionDay('2026-11-05', 100, 'Assemblage', 'KIKO'), weekKey:week, weeklyTarget:98340 },
+    { ...productionDay('2026-11-05', 100, 'Assemblage', 'CT'), weekKey:week, weeklyTarget:98340 },
+  ];
+  const totals = { [buildWeeklyTargetOverrideKey('department', 'Assemblage', week)]:98340 };
+  const allocations = [{client:'CT', target:0}, {client:'KIKO', target:10500 * 6}];
+  assert.throws(() => validateAssemblyClientAllocation(data, totals, week, allocations), /somme/);
+  const entries = validateAssemblyClientAllocation(data, totals, week, allocations, 63000);
+  assert.equal(getAssemblyWeeklyTotal(data, entries, week), 63000);
+  assert.equal(getAssemblyClientTarget(entries, 'CT', week), 0);
+  assert.equal(getAssemblyClientTarget(entries, 'KIKO', week) / 6, 10500);
+  assert.equal(Object.keys(entries).length, 3);
+  assert.equal(getAssemblyClientTarget(entries, 'KIKO', getWeekMetadata('2026-11-09').weekKey), undefined);
+});
+
+test('Assembly target dialog: show imported total and disable saving until every client target is filled', () => {
+  const week = getWeekMetadata('2026-11-05').weekKey;
+  const { AssemblyClientTargetsModal } = loadSource('src/components/AssemblyClientTargetsModal.tsx', { modules: {
+    '@/store/useStore': { useStore: () => ({ productionData:[{...productionDay('2026-11-05', 100),weekKey:week,weeklyTarget:600}], weeklyTargets:{}, setWeeklyTargets:()=>{} }) },
+  } });
+  const html = renderToStaticMarkup(createElement(AssemblyClientTargetsModal, {initialWeekKey:week, onClose:()=>{}}));
+  assert.match(html, /role="dialog"/);
+  assert.match(html, /Objectif hebdomadaire KIKO/);
+  assert.match(html, /Total Assemblage/);
+  assert.match(html, /600/);
+  assert.match(html, /<button[^>]*disabled=""[^>]*>.*Enregistrer cette semaine/);
+});
+
+test('KIKO plan status: above is green, equal orange, below red; neutral without a target', () => {
+  assert.equal(getKikoPlanStatus(48013, 52500), 'red');
+  assert.equal(getKikoPlanStatus(9499, 10000), 'red');
+  assert.equal(getKikoPlanStatus(9999, 10000), 'red');
+  assert.equal(getKikoPlanStatus(10000, 10000), 'orange');
+  assert.equal(getKikoPlanStatus(10001, 10000), 'green');
+  assert.equal(getKikoPlanStatus(10501, 10000), 'green');
+  assert.equal(getKikoPlanStatus(0, 0), 'neutral');
+});
 
 function productionDay(date, quantity, department = 'Assemblage', client = 'KIKO') {
   return {
     date, department, actualProduction: quantity + 999,
-    conformQty: quantity - 10, scrapQty: 10,
-    clientBreakdown: [{ client, actualProduction: quantity, conformQty: quantity - 10, scrapQty: 10 }],
+    conformQty: quantity, scrapQty: 10,
+    clientBreakdown: [{ client, actualProduction: quantity + 10, conformQty: quantity, scrapQty: 10 }],
   };
 }
 
-test('KIKO progress: accumulate Produced Qty day by day, excluding future dates and other clients/departments', () => {
+test('KIKO progress: accumulate conforming quantity day by day, excluding future dates and other clients/departments', () => {
   const data = [
     productionDay('2026-11-01', 10_000),
     productionDay('2026-11-02', 15_000),
@@ -80,6 +205,41 @@ test('KIKO progress: accumulate Produced Qty day by day, excluding future dates 
   const missingDay = getKikoProductionProgress(data, '2026-11-04');
   assert.equal(missingDay.dailyQuantity, 0);
   assert.equal(missingDay.cumulative, 45_000);
+});
+
+test('KIKO plan: count each active KIKO date once, including scrap-only days, excluding idle days and gaps', () => {
+  const day = (date, produced, conform, scrap) => ({
+    ...productionDay(date, produced),
+    clientBreakdown: [{ client: 'KIKO', actualProduction: produced, conformQty: conform, scrapQty: scrap }],
+  });
+  const data = [
+    day('2026-10-25', 500, 490, 10),
+    day('2026-10-26', 12000, 11000, 1000),
+    day('2026-10-26', 2000, 1800, 200),
+    day('2026-10-27', 0, 0, 0),
+    productionDay('2026-10-28', 15000, 'Assemblage', 'YZA'),
+    productionDay('2026-10-28', 15000, 'Injection'),
+    day('2026-10-30', 100, 0, 100),
+    day('2026-11-01', 10000, 9000, 1000),
+  ];
+  const result = getKikoProductionProgress(data, '2026-10-31');
+  assert.equal(result.cumulative, 12800);
+  assert.equal(result.dailyQuantity, 0);
+  assert.equal(result.workingDays, 2);
+  assert.equal(result.plannedCumulative, 21000);
+  assert.equal(result.variance, -8200);
+  assert.deepEqual(result.history.map(({date, cumulative, plannedCumulative}) => ({date, cumulative, plannedCumulative})), [
+    {date:'2026-10-26', cumulative:12800, plannedCumulative:10500},
+    {date:'2026-10-27', cumulative:12800, plannedCumulative:10500},
+    {date:'2026-10-30', cumulative:12800, plannedCumulative:21000},
+  ]);
+  const sunday = getKikoProductionProgress(data, '2026-11-01');
+  assert.equal(sunday.workingDays, 3);
+  assert.equal(sunday.plannedCumulative, 31500);
+  assert.equal(sunday.dailyQuantity, 9000);
+  const empty = getKikoProductionProgress([], '2026-11-01');
+  assert.equal(empty.plannedCumulative, 0);
+  assert.equal(empty.variance, 0);
 });
 
 test('KIKO progress: start on October 26 inclusive and exclude earlier production from all totals', () => {
@@ -160,6 +320,10 @@ test('KIKO progress component: render real cumulative quantities and accessible 
   assert.match(html, /Objectif total atteint le 02\/11\/2026/);
   assert.match(html, /19\/12\/2026/);
   assert.match(html, /26\/10\/2026/);
+  assert.match(html, /Qté conforme \/ jour/);
+  assert.match(html, /Cumul conforme \/ planifié/);
+  assert.match(html, /Planifié : 21\s000/);
+  assert.match(html, /10\s500 pièces × 2 jours/);
   assert.doesNotMatch(html, /NaN|Infinity/);
 });
 
@@ -218,6 +382,7 @@ test('legacy data belongs to Non renseigné and never leaks into a named client'
 
 test('Supabase: persist/reload client detail, preserve other days and clear stale detail on reimport', async () => {
   const productionRows = new Map();
+  const weeklyTargetRows = new Map();
   const metadataRows = new Map([['warnings', ['Existing warning']]]);
   const calls = [];
   const fakeFetch = async (url, options) => {
@@ -227,16 +392,19 @@ test('Supabase: persist/reload client detail, preserve other days and clear stal
       for (const row of JSON.parse(options.body)) {
         if (table === 'production_reports') productionRows.set(`${row.department}:${row.report_date}`, row);
         if (table === 'dashboard_metadata') metadataRows.set(row.meta_key, row.meta_value);
+        if (table === 'weekly_targets') weeklyTargetRows.set(row.target_key, row.value);
       }
       return new Response(null, { status: 201 });
     }
     if (options.method === 'DELETE') {
       if (table === 'production_reports') productionRows.clear();
       if (table === 'dashboard_metadata') metadataRows.clear();
+      if (table === 'weekly_targets') weeklyTargetRows.clear();
       return new Response(null, { status: 204 });
     }
     const rows = table === 'production_reports' ? Array.from(productionRows.values())
       : table === 'dashboard_metadata' ? Array.from(metadataRows, ([meta_key, meta_value]) => ({ meta_key, meta_value }))
+      : table === 'weekly_targets' ? Array.from(weeklyTargetRows, ([target_key, value]) => ({ target_key, value }))
         : [];
     return Response.json(rows);
   };
@@ -255,6 +423,12 @@ test('Supabase: persist/reload client detail, preserve other days and clear stal
     assert.equal(getClientQuantities(snapshot.productionData[0], 'KIKO').actualProduction, 100);
     assert.deepEqual(snapshot.warnings, ['Existing warning']);
     assert.equal(metadataRows.size, 3);
+    const weekKey = parsed.data[0].weekKey;
+    const clientTargets = validateAssemblyClientAllocation(parsed.data, {}, weekKey, [
+      { client: 'KIKO', target: 400 }, { client: 'YZA', target: 200 },
+    ]);
+    await service.persistDashboardSnapshot({ weeklyTargets: clientTargets });
+    assert.equal(getAssemblyClientTarget((await service.loadDashboardSnapshot()).weeklyTargets, 'KIKO', weekKey), 400);
 
     const updatedDay = { ...parsed.data[0], actualProduction: 60, conformQty: 55, scrapQty: 5, clientBreakdown: [
       { client: 'YZA', actualProduction: 60, conformQty: 55, scrapQty: 5 },
@@ -263,6 +437,9 @@ test('Supabase: persist/reload client detail, preserve other days and clear stal
     assert.equal(snapshot.productionData.length, 2);
     assert.equal(getClientQuantities(snapshot.productionData[0], 'KIKO').actualProduction, 0);
     assert.equal(getClientQuantities(snapshot.productionData[1], 'YZA').actualProduction, 80);
+    assert.equal(getAssemblyClientTarget(snapshot.weeklyTargets, 'KIKO', weekKey), 400);
+    await service.persistDashboardSnapshot({ weeklyTargets: { [buildWeeklyTargetOverrideKey('department', 'Assemblage', weekKey)]: 800 } });
+    assert.equal(getAssemblyClientTarget((await service.loadDashboardSnapshot()).weeklyTargets, 'YZA', weekKey), 200);
 
     const { clientBreakdown: ignored, ...oldFormat } = updatedDay;
     void ignored;
@@ -272,6 +449,7 @@ test('Supabase: persist/reload client detail, preserve other days and clear stal
 
     await service.clearDashboardSnapshot();
     assert.equal(metadataRows.size, 0);
+    assert.equal(weeklyTargetRows.size, 0);
     const deletion = calls.find((call) => call.table === 'dashboard_metadata' && call.method === 'DELETE');
     assert.match(deletion.query.or, /assembly_clients/);
   } finally {
@@ -332,15 +510,15 @@ test('Supabase: retain KIKO imports when dashboard_metadata is absent and legacy
       ['04/11/2026', 'KIKO', 80, 75, 5],
     ]), 'Assemblage', 600);
     const imported = await service.persistDashboardSnapshot({ productionData: parsed.data, warnings: ['Import warning'] });
-    assert.equal(getKikoProductionProgress(imported.productionData, '2026-11-05').cumulative, 180);
+    assert.equal(getKikoProductionProgress(imported.productionData, '2026-11-05').cumulative, 165);
     assert.deepEqual(imported.warnings, ['Import warning']);
 
     const reloaded = await service.loadDashboardSnapshot();
-    assert.equal(getKikoProductionProgress(reloaded.productionData, '2026-11-05').cumulative, 180);
+    assert.equal(getKikoProductionProgress(reloaded.productionData, '2026-11-05').cumulative, 165);
     assert.equal(snapshotRows.size, 4);
     await service.persistDashboardSnapshot({ productionData: [parsed.data[0]] });
     assert.equal(snapshotRows.size, 4);
-    assert.equal(getKikoProductionProgress((await service.loadDashboardSnapshot()).productionData, '2026-11-05').cumulative, 180);
+    assert.equal(getKikoProductionProgress((await service.loadDashboardSnapshot()).productionData, '2026-11-05').cumulative, 165);
 
     await service.clearDashboardSnapshot();
     assert.equal(snapshotRows.size, 1);
